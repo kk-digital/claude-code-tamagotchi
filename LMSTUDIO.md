@@ -171,6 +171,52 @@ Then source it when you want to use LMStudio:
 source ~/.pet-lmstudio.env
 ```
 
+## Testing LMStudio Connection
+
+### Run Test Suite
+
+```bash
+./test-model.sh
+```
+
+### Test Inference Directly
+
+Test that LMStudio is responding correctly:
+
+```bash
+curl -s http://localhost:1234/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-oss-20b",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "temperature": 0.6,
+    "max_tokens": 100
+  }' \
+  | jq -r '.choices[0].message.content'
+```
+
+Expected output: A response from the LLM model.
+
+### Check LMStudio Configuration
+
+Verify the model is loaded in LMStudio:
+
+```bash
+cat ~/.lmstudio/.internal/model-data.json | jq '.json[] | select(.[0] == "openai/gpt-oss-20b")'
+```
+
+This shows the model configuration and status in LMStudio's internal data.
+
+### Verify API Endpoint
+
+Check that the server is running:
+
+```bash
+curl -s http://localhost:1234/v1/models | jq
+```
+
+Expected output: JSON list of available models.
+
 ## Support
 
 If you encounter issues:
