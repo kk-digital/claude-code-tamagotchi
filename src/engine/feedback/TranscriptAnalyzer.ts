@@ -117,7 +117,8 @@ export class TranscriptAnalyzer {
         this.config.groqModel,
         this.config.groqTimeout,
         2, // maxRetries (default)
-        this.config.dbPath // Pass database path for violation storage
+        this.config.dbPath, // Pass database path for violation storage
+        this.config.llmBaseUrl // Pass custom base URL for LMStudio
       );
 
       // Get session history for context

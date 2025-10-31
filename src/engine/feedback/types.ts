@@ -134,6 +134,7 @@ export interface FeedbackConfig {
   staleLockTime: number;
   dbPath: string;
   dbMaxSize: number;
+  llmBaseUrl?: string;
   groqApiKey?: string;
   groqModel: string;
   groqTimeout: number;

@@ -57,6 +57,8 @@ export interface Config {
   feedbackStaleLockTime: number;
   feedbackDbPath: string;
   feedbackDbMaxSize: number;
+  llmProvider: 'groq' | 'lmstudio';
+  llmBaseUrl?: string;
   groqApiKey?: string;
   groqModel: string;
   groqTimeout: number;
@@ -122,6 +124,8 @@ export const config: Config = {
   feedbackStaleLockTime: parseInt(process.env.PET_FEEDBACK_STALE_LOCK_TIME || '30000'),
   feedbackDbPath: resolvePath(process.env.PET_FEEDBACK_DB_PATH || '~/.claude/pets/feedback.db'),
   feedbackDbMaxSize: parseInt(process.env.PET_FEEDBACK_DB_MAX_SIZE || '50'),
+  llmProvider: (process.env.PET_LLM_PROVIDER as any) || 'groq',
+  llmBaseUrl: process.env.PET_LLM_BASE_URL || (process.env.PET_LLM_PROVIDER === 'lmstudio' ? 'http://localhost:1234/v1' : undefined),
   groqApiKey: process.env.PET_GROQ_API_KEY || process.env.GROQ_API_KEY,
   groqModel: process.env.PET_GROQ_MODEL || 'openai/gpt-oss-20b',
   groqTimeout: parseInt(process.env.PET_GROQ_TIMEOUT || '2000'),

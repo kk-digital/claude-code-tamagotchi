@@ -27,6 +27,7 @@ export class FeedbackSystem {
       staleLockTime: config.feedbackStaleLockTime,
       dbPath: config.feedbackDbPath,
       dbMaxSize: config.feedbackDbMaxSize,
+      llmBaseUrl: config.llmBaseUrl,
       groqApiKey: config.groqApiKey,
       groqModel: config.groqModel,
       groqTimeout: config.groqTimeout,

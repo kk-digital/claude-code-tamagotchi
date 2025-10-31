@@ -9,19 +9,31 @@ export class GroqClient {
   private maxRetries: number;
   private db: FeedbackDatabase | null = null;
 
-  constructor(apiKey: string | undefined, model: string, timeout: number, maxRetries: number = 2, dbPath?: string) {
+  constructor(apiKey: string | undefined, model: string, timeout: number, maxRetries: number = 2, dbPath?: string, baseURL?: string) {
     this.debug(`GroqClient constructor called with:`);
     this.debug(`  apiKey: ${apiKey ? 'provided' : 'not provided'}`);
     this.debug(`  model: ${model}`);
     this.debug(`  timeout: ${timeout}`);
     this.debug(`  maxRetries: ${maxRetries}`);
     this.debug(`  dbPath: ${dbPath}`);
-    
-    if (apiKey) {
-      this.client = new Groq({ apiKey });
-      this.debug('Groq client initialized successfully');
+    this.debug(`  baseURL: ${baseURL || 'default (Groq)'}`);
+
+    if (apiKey || baseURL) {
+      // Initialize client with custom baseURL if provided (for LMStudio)
+      // For LMStudio, API key can be empty or any value
+      const clientConfig: any = {
+        apiKey: apiKey || 'lm-studio'  // LMStudio doesn't require real API key
+      };
+
+      if (baseURL) {
+        clientConfig.baseURL = baseURL;
+        this.debug(`Using custom base URL: ${baseURL}`);
+      }
+
+      this.client = new Groq(clientConfig);
+      this.debug('Groq/LLM client initialized successfully');
     } else {
-      this.debug('No API key provided - Groq client not initialized');
+      this.debug('No API key or base URL provided - client not initialized');
     }
     
     this.model = model;

@@ -66,6 +66,8 @@ debug(`Worker started for session ${sessionId}`);
 
 // Configuration from environment
 const config = {
+  llmProvider: process.env.PET_LLM_PROVIDER || 'groq',
+  llmBaseUrl: process.env.PET_LLM_BASE_URL || (process.env.PET_LLM_PROVIDER === 'lmstudio' ? 'http://localhost:1234/v1' : undefined),
   groqApiKey: process.env.PET_GROQ_API_KEY,
   groqModel: process.env.PET_GROQ_MODEL || 'openai/gpt-oss-20b',
   groqTimeout: parseInt(process.env.PET_GROQ_TIMEOUT || '2000'),
@@ -77,11 +79,12 @@ const config = {
 const db = new FeedbackDatabase(dbPath);
 const processor = new MessageProcessor(db, config.staleLockTime);
 const groq = new GroqClient(
-  config.groqApiKey, 
-  config.groqModel, 
+  config.groqApiKey,
+  config.groqModel,
   config.groqTimeout,
   2, // maxRetries (default)
-  dbPath // Pass database path for violation storage
+  dbPath, // Pass database path for violation storage
+  config.llmBaseUrl // Pass custom base URL for LMStudio
 );
 
 // Get recent funny observations for this session to avoid repetition

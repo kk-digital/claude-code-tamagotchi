@@ -1,0 +1,255 @@
+Security Analysis Report: Claude Code Tamagotchi
+================================================
+
+Date: 2025-10-31
+Analyst: Claude Code Analysis
+Repository: https://github.com/Ido-Levi/claude-code-tamagotchi
+
+EXECUTIVE SUMMARY
+=================
+
+Verdict: SAFE with privacy considerations
+
+✅ No malware, backdoors, or malicious code
+✅ No credential theft
+✅ No unauthorized data exfiltration
+⚠️ Privacy risk when AI features enabled - Sends conversation data to Groq API
+✅ Transparent code - All functionality is visible and documented
+✅ Opt-in design - Sensitive features require explicit enablement
+
+WHAT THIS APPLICATION DOES
+===========================
+
+Claude Code Tamagotchi is a virtual pet that lives in the Claude Code statusline.
+
+Core Features:
+1. Displays animated pet character with stats (hunger, energy, cleanliness, happiness)
+2. Tracks activity based on Claude Code interactions (not real-time)
+3. AI-powered behavioral monitoring (OPTIONAL) - Uses Groq LLM API to analyze Claude Code behavior
+4. Violation detection (EXPERIMENTAL) - Can detect and block certain Claude Code actions
+
+HOW TO RUN IT
+=============
+
+Prerequisites:
+- Bun runtime: curl -fsSL https://bun.sh/install | bash
+- Claude Code: https://claude.ai/code
+
+Installation Options:
+
+Option 1: Global Install (Basic Features)
+------------------------------------------
+bun add -g claude-code-tamagotchi
+
+Add to ~/.claude/settings.json:
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bunx claude-code-tamagotchi statusline",
+    "padding": 0
+  }
+}
+
+Option 2: Clone & Setup (Full Features)
+----------------------------------------
+git clone https://github.com/Ido-Levi/claude-code-tamagotchi.git
+cd claude-code-tamagotchi
+./setup.sh
+
+Option 3: Enable AI Features (Optional)
+----------------------------------------
+# Get free API key from https://console.groq.com/keys
+./enable-feedback.sh
+
+# Or manually:
+export PET_FEEDBACK_ENABLED=true
+export GROQ_API_KEY="your-api-key-here"
+
+Available Commands:
+-------------------
+/pet-feed pizza       # Feed your pet
+/pet-play ball        # Play with pet
+/pet-stats            # View detailed stats
+/pet-clean            # Give pet a bath
+/pet-sleep            # Put pet to sleep
+/pet-wake             # Wake pet up
+/pet-name "Buddy"     # Name your pet
+/pet-reset            # Reset pet state
+
+SECURITY ANALYSIS
+=================
+
+✅ No Backdoors Found
+---------------------
+- No hidden malicious code detected
+- No unauthorized data exfiltration
+- No credential harvesting mechanisms
+- Code is transparent and well-documented
+
+⚠️ Data Sent to External API (Groq)
+------------------------------------
+
+IMPORTANT: When AI features are enabled (PET_FEEDBACK_ENABLED=true), the application
+sends data to Groq's API.
+
+Data sent to Groq API (src/llm/GroqClient.ts:170-187):
+1. Claude Code conversation transcript - Entire conversation (up to last 200 messages)
+2. User prompts - What you asked Claude to do
+3. Claude's actions - What tools Claude used (Read, Edit, Bash, etc.)
+4. File paths - Names of files Claude accessed (NOT file contents)
+5. Pet state - Stats like hunger, energy, recent activities
+
+What is NOT sent:
+- ❌ File contents (only file names/paths)
+- ❌ API keys from your environment (only the Groq API key is used)
+- ❌ Credentials or secrets
+- ❌ Code you write
+
+Network Destination:
+- Groq API at https://api.groq.com (via groq-sdk npm package)
+- Purpose: Analyze Claude behavior and generate observations
+- Model used: openai/gpt-oss-20b (configurable via PET_GROQ_MODEL)
+
+🔐 API Key Handling
+-------------------
+
+Good Practices:
+- API keys loaded from environment variables only (src/utils/config.ts:125)
+- Supports both GROQ_API_KEY and PET_GROQ_API_KEY
+- No hardcoded keys in source code
+- Keys not logged or exposed
+
+📁 File System Access
+---------------------
+
+Files Read:
+- ~/.claude/pets/claude-pet-state.json - Pet state (hunger, energy, etc.)
+- ~/.claude/pets/feedback.db - SQLite database for feedback/violations
+- Transcript files provided by Claude Code (conversation history)
+
+Files Written:
+- Pet state JSON (saves stats)
+- Feedback database (stores violations, analysis results)
+- Optional log files if debugging enabled (/tmp/pet-calls.log, etc.)
+
+No unauthorized file access detected.
+
+🚨 Privacy Implications
+-----------------------
+
+If you enable AI features (PET_FEEDBACK_ENABLED=true):
+
+HIGH PRIVACY IMPACT:
+- Your entire conversation with Claude Code is sent to Groq
+- This includes all prompts, responses, and context
+- File paths and directory names are visible to Groq
+- Session history is included for context (default: last 200 messages)
+
+Mitigation:
+- Feature is opt-in (disabled by default)
+- You control when to enable it via environment variables
+- You can set PET_FEEDBACK_MAX_HISTORY to limit context sent
+- Data is sent to Groq (third-party), subject to their privacy policy
+
+If you DO NOT enable AI features:
+- ✅ No external network requests
+- ✅ All data stays local
+- ✅ Pet works offline (just basic stats tracking)
+
+🔒 Security Recommendations
+---------------------------
+
+1. Review what you're sharing: If enabling AI features, understand that Groq
+   will see your Claude Code conversations
+
+2. Don't enable in sensitive projects: Avoid using AI features when working
+   with proprietary code, secrets, or sensitive data
+
+3. Audit your API key: Only use Groq API keys you trust and monitor their usage
+
+4. Check Groq's privacy policy: Understand how Groq handles your data at
+   https://groq.com
+
+5. Use basic mode for privacy: Disable AI features (PET_FEEDBACK_ENABLED=false)
+   for maximum privacy
+
+🛡️ Violation Detection System
+------------------------------
+
+The experimental violation detection feature (src/commands/violation-check.ts):
+- Monitors Claude Code actions for policy violations
+- Can block operations by exiting with code 2
+- Stores violations in local SQLite database
+- Configured via PET_VIOLATION_CHECK_ENABLED environment variable
+- Uses PreToolUse hooks to intercept actions before execution
+
+Security note: This modifies Claude Code behavior by blocking certain actions.
+Only enable if you understand the implications.
+
+DETAILED CODE ANALYSIS
+======================
+
+Core Components:
+
+1. Entry Point (src/index.ts)
+   - Reads stdin from Claude Code
+   - Updates pet state
+   - Outputs statusline display
+   - No network requests in main flow
+
+2. Pet Engine (src/engine/PetEngine.ts)
+   - Central orchestrator
+   - Manages state updates, animations, actions
+   - All operations local
+
+3. State Management (src/engine/StateManager.ts)
+   - Handles persistent state storage
+   - Stores to ~/.claude/pets/claude-pet-state.json
+   - No external communication
+
+4. GroqClient (src/llm/GroqClient.ts)
+   - Only component that makes external requests
+   - Uses groq-sdk npm package
+   - Sends conversation data when AI features enabled
+   - Implements violation detection
+
+5. Feedback System (src/engine/feedback/FeedbackSystem.ts)
+   - Processes AI analysis results
+   - Updates pet mood based on Claude behavior
+   - All processing happens locally
+
+6. Violation Check (src/commands/violation-check.ts)
+   - Pre-hook command for Claude Code
+   - Reads from SQLite database
+   - Can block tool execution
+   - No network requests
+
+Dependencies:
+- dotenv: ^16.3.1 (environment variable loading)
+- groq-sdk: ^0.30.0 (Groq API client)
+
+Both dependencies are legitimate and widely used packages.
+
+OVERALL ASSESSMENT
+==================
+
+Recommendation: SAFE to use with awareness of privacy implications
+
+The application is:
+✅ Not malware
+✅ Does not steal credentials
+✅ Does not exfiltrate data without consent
+✅ Transparent in its operations
+⚠️ Sends conversation data to Groq when AI features enabled (opt-in)
+✅ Well-documented and open source
+
+Use Cases:
+- Basic mode (no AI): Completely safe, no privacy concerns
+- AI mode (Groq enabled): Safe but understand data sharing implications
+- Sensitive projects: Use basic mode only, disable AI features
+
+The main consideration is understanding what data is shared with Groq when
+AI features are enabled. For users who are comfortable with this (similar to
+using other AI services), the application provides useful monitoring capabilities.
+
+For maximum privacy: Use with PET_FEEDBACK_ENABLED=false
