@@ -112,22 +112,15 @@ export class TranscriptAnalyzer {
 
       // Import dependencies
       const { LlmWrapperFactory } = await import('../../llm/LlmWrapperFactory');
-      const { buildLlmWrapperSettings } = await import('../../utils/config');
 
-      // Build settings from config (includes provider selection logic)
+      // Build settings from config (explicit provider required)
       const llmSettings = {
-        provider: this.config.llmProvider === 'auto'
-          ? LlmWrapperFactory.selectProvider(
-              this.config.llmProvider,
-              this.config.lmstudioEnabled,
-              this.config.groqApiKey
-            )
-          : this.config.llmProvider,
+        provider: this.config.llmProvider,
         model: this.config.llmProvider === 'lmstudio' ? this.config.lmstudioModel : this.config.groqModel,
         timeout: this.config.llmProvider === 'lmstudio' ? this.config.lmstudioTimeout : this.config.groqTimeout,
         maxRetries: this.config.llmProvider === 'lmstudio' ? this.config.lmstudioMaxRetries : this.config.groqMaxRetries,
         dbPath: this.config.dbPath,
-        groqSettings: this.config.llmProvider !== 'lmstudio' ? {
+        groqSettings: this.config.llmProvider === 'groq' ? {
           apiKey: this.config.groqApiKey,
           model: this.config.groqModel
         } : undefined,

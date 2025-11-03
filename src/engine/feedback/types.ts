@@ -149,7 +149,7 @@ export interface FeedbackConfig {
   groqModel: string;
   groqTimeout: number;
   groqMaxRetries: number;
-  llmProvider: 'groq' | 'lmstudio' | 'auto';
+  llmProvider: 'groq' | 'lmstudio';
   lmstudioEnabled: boolean;
   lmstudioUrl: string;
   lmstudioModel: string;

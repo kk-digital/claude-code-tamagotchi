@@ -61,7 +61,7 @@ export interface Config {
   groqModel: string;
   groqTimeout: number;
   groqMaxRetries: number;
-  llmProvider: 'groq' | 'lmstudio' | 'auto';
+  llmProvider: 'groq' | 'lmstudio';
   lmstudioEnabled: boolean;
   lmstudioUrl: string;
   lmstudioModel: string;
@@ -133,7 +133,7 @@ export const config: Config = {
   groqModel: process.env.PET_GROQ_MODEL || 'openai/gpt-oss-20b',
   groqTimeout: parseInt(process.env.PET_GROQ_TIMEOUT || '2000'),
   groqMaxRetries: parseInt(process.env.PET_GROQ_MAX_RETRIES || '2'),
-  llmProvider: (process.env.PET_LLM_PROVIDER as any) || 'auto',
+  llmProvider: (process.env.PET_LLM_PROVIDER as any) || 'groq',
   lmstudioEnabled: process.env.LM_STUDIO_ENABLED === 'true',
   lmstudioUrl: process.env.LM_STUDIO_URL || 'http://localhost:1234/v1',
   lmstudioModel: process.env.LM_STUDIO_MODEL || 'openai/gpt-oss-120b',
@@ -175,45 +175,37 @@ export function getWeatherEffects() {
  * Build LlmWrapperSettings from Config
  *
  * This helper creates the settings object for LlmWrapperFactory based on
- * the current configuration. It implements the auto provider selection logic:
- * 1. If explicit provider specified, use it
- * 2. If 'auto', prefer LM Studio if enabled, fall back to Groq
+ * the current configuration. Provider must be explicitly specified in config.
+ *
+ * IMPORTANT: No automatic fallback - explicit provider selection required.
+ * This prevents unexpected behavior and cost overruns.
  *
  * @param cfg - Config object (defaults to global config)
  * @returns LlmWrapperSettings for creating LLM provider instances
+ * @throws Error if provider is not explicitly set to 'groq' or 'lmstudio'
  */
 export function buildLlmWrapperSettings(cfg: Config = config) {
-  // Import LlmWrapperFactory for selectProvider helper
-  const { LlmWrapperFactory } = require('../llm/LlmWrapperFactory');
-
-  // Determine which provider to use
-  const selectedProvider = LlmWrapperFactory.selectProvider(
-    cfg.llmProvider,
-    cfg.lmstudioEnabled,
-    cfg.groqApiKey
-  );
-
-  // If no provider available, throw error
-  if (!selectedProvider) {
-    throw new Error('No LLM provider available. Either enable LM Studio or provide Groq API key.');
+  // Validate that provider is explicitly set
+  if (cfg.llmProvider !== 'groq' && cfg.llmProvider !== 'lmstudio') {
+    throw new Error(`LLM provider must be explicitly set to 'groq' or 'lmstudio'. Current value: '${cfg.llmProvider}'`);
   }
 
-  // Build settings object based on selected provider
+  // Build settings object based on configured provider
   const settings: any = {
-    provider: selectedProvider,
-    model: selectedProvider === 'groq' ? cfg.groqModel : cfg.lmstudioModel,
-    timeout: selectedProvider === 'groq' ? cfg.groqTimeout : cfg.lmstudioTimeout,
-    maxRetries: selectedProvider === 'groq' ? cfg.groqMaxRetries : cfg.lmstudioMaxRetries,
+    provider: cfg.llmProvider,
+    model: cfg.llmProvider === 'groq' ? cfg.groqModel : cfg.lmstudioModel,
+    timeout: cfg.llmProvider === 'groq' ? cfg.groqTimeout : cfg.lmstudioTimeout,
+    maxRetries: cfg.llmProvider === 'groq' ? cfg.groqMaxRetries : cfg.lmstudioMaxRetries,
     dbPath: cfg.feedbackDbPath
   };
 
   // Add provider-specific settings
-  if (selectedProvider === 'groq') {
+  if (cfg.llmProvider === 'groq') {
     settings.groqSettings = {
       apiKey: cfg.groqApiKey,
       model: cfg.groqModel
     };
-  } else if (selectedProvider === 'lmstudio') {
+  } else if (cfg.llmProvider === 'lmstudio') {
     settings.lmstudioSettings = {
       url: cfg.lmstudioUrl,
       model: cfg.lmstudioModel,

@@ -15,6 +15,13 @@ export interface LlmResponse {
 
 /**
  * Settings for LLM provider configuration
+ *
+ * IMPORTANT: Provider must be explicitly specified - no automatic fallback.
+ * Automatic fallback is undesirable because it can lead to:
+ * - Unexpected behavior when switching between providers
+ * - Different response quality/formats between providers
+ * - Silent failures masking configuration issues
+ * - Unpredictable costs when falling back to cloud providers
  */
 export interface LlmWrapperSettings {
   provider: 'groq' | 'lmstudio' | 'openai';

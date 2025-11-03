@@ -67,11 +67,10 @@ debug(`Worker started for session ${sessionId}`);
 
 // Configuration from environment
 const config = {
-  llmProvider: (process.env.PET_LLM_PROVIDER as 'groq' | 'lmstudio' | 'auto') || 'auto',
+  llmProvider: (process.env.PET_LLM_PROVIDER as 'groq' | 'lmstudio') || 'groq',
   groqApiKey: process.env.PET_GROQ_API_KEY,
   groqModel: process.env.PET_GROQ_MODEL || 'openai/gpt-oss-20b',
   groqTimeout: parseInt(process.env.PET_GROQ_TIMEOUT || '2000'),
-  lmstudioEnabled: process.env.LM_STUDIO_ENABLED === 'true',
   lmstudioUrl: process.env.LM_STUDIO_URL || 'http://localhost:1234/v1',
   lmstudioModel: process.env.LM_STUDIO_MODEL || 'openai/gpt-oss-120b',
   lmstudioApiKey: process.env.LM_STUDIO_API_KEY,
@@ -84,33 +83,27 @@ const config = {
 const db = new FeedbackDatabase(dbPath);
 const processor = new MessageProcessor(db, config.staleLockTime);
 
-// Determine which provider to use
-const selectedProvider = LlmWrapperFactory.selectProvider(
-  config.llmProvider,
-  config.lmstudioEnabled,
-  config.groqApiKey
-);
-
-if (!selectedProvider) {
-  debug('ERROR: No LLM provider available');
-  console.error('No LLM provider available. Either enable LM Studio or provide Groq API key.');
+// Validate provider is explicitly set
+if (config.llmProvider !== 'groq' && config.llmProvider !== 'lmstudio') {
+  debug(`ERROR: Invalid LLM provider: ${config.llmProvider}`);
+  console.error(`LLM provider must be explicitly set to 'groq' or 'lmstudio'. Current value: '${config.llmProvider}'`);
   process.exit(1);
 }
 
-debug(`Using LLM provider: ${selectedProvider}`);
+debug(`Using LLM provider: ${config.llmProvider}`);
 
 // Build LLM settings
 const llmSettings: LlmWrapperSettings = {
-  provider: selectedProvider,
-  model: selectedProvider === 'groq' ? config.groqModel : config.lmstudioModel,
-  timeout: selectedProvider === 'groq' ? config.groqTimeout : config.lmstudioTimeout,
+  provider: config.llmProvider,
+  model: config.llmProvider === 'groq' ? config.groqModel : config.lmstudioModel,
+  timeout: config.llmProvider === 'groq' ? config.groqTimeout : config.lmstudioTimeout,
   maxRetries: 2,
   dbPath: dbPath,
-  groqSettings: selectedProvider === 'groq' ? {
+  groqSettings: config.llmProvider === 'groq' ? {
     apiKey: config.groqApiKey,
     model: config.groqModel
   } : undefined,
-  lmstudioSettings: selectedProvider === 'lmstudio' ? {
+  lmstudioSettings: config.llmProvider === 'lmstudio' ? {
     url: config.lmstudioUrl,
     model: config.lmstudioModel,
     apiKey: config.lmstudioApiKey
