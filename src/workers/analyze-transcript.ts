@@ -7,12 +7,13 @@
 
 import { FeedbackDatabase } from '../engine/feedback/FeedbackDatabase';
 import { MessageProcessor } from '../engine/feedback/MessageProcessor';
-import { GroqClient } from '../llm/GroqClient';
-import { 
-  TranscriptMessage, 
-  MessageMetadata, 
+import { LlmWrapperFactory } from '../llm/LlmWrapperFactory';
+import { LlmWrapperSettings } from '../llm/LlmWrapper';
+import {
+  TranscriptMessage,
+  MessageMetadata,
   Feedback,
-  LLMAnalysisResult 
+  LLMAnalysisResult
 } from '../engine/feedback/types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -66,9 +67,15 @@ debug(`Worker started for session ${sessionId}`);
 
 // Configuration from environment
 const config = {
+  llmProvider: (process.env.PET_LLM_PROVIDER as 'groq' | 'lmstudio' | 'auto') || 'auto',
   groqApiKey: process.env.PET_GROQ_API_KEY,
   groqModel: process.env.PET_GROQ_MODEL || 'openai/gpt-oss-20b',
   groqTimeout: parseInt(process.env.PET_GROQ_TIMEOUT || '2000'),
+  lmstudioEnabled: process.env.LM_STUDIO_ENABLED === 'true',
+  lmstudioUrl: process.env.LM_STUDIO_URL || 'http://localhost:1234/v1',
+  lmstudioModel: process.env.LM_STUDIO_MODEL || 'openai/gpt-oss-120b',
+  lmstudioApiKey: process.env.LM_STUDIO_API_KEY,
+  lmstudioTimeout: parseInt(process.env.PET_LM_STUDIO_TIMEOUT || '5000'),
   batchSize: parseInt(process.env.PET_FEEDBACK_BATCH_SIZE || '10'),
   staleLockTime: parseInt(process.env.PET_FEEDBACK_STALE_LOCK_TIME || '30000')
 };
@@ -76,13 +83,41 @@ const config = {
 // Initialize components
 const db = new FeedbackDatabase(dbPath);
 const processor = new MessageProcessor(db, config.staleLockTime);
-const groq = new GroqClient(
-  config.groqApiKey, 
-  config.groqModel, 
-  config.groqTimeout,
-  2, // maxRetries (default)
-  dbPath // Pass database path for violation storage
+
+// Determine which provider to use
+const selectedProvider = LlmWrapperFactory.selectProvider(
+  config.llmProvider,
+  config.lmstudioEnabled,
+  config.groqApiKey
 );
+
+if (!selectedProvider) {
+  debug('ERROR: No LLM provider available');
+  console.error('No LLM provider available. Either enable LM Studio or provide Groq API key.');
+  process.exit(1);
+}
+
+debug(`Using LLM provider: ${selectedProvider}`);
+
+// Build LLM settings
+const llmSettings: LlmWrapperSettings = {
+  provider: selectedProvider,
+  model: selectedProvider === 'groq' ? config.groqModel : config.lmstudioModel,
+  timeout: selectedProvider === 'groq' ? config.groqTimeout : config.lmstudioTimeout,
+  maxRetries: 2,
+  dbPath: dbPath,
+  groqSettings: selectedProvider === 'groq' ? {
+    apiKey: config.groqApiKey,
+    model: config.groqModel
+  } : undefined,
+  lmstudioSettings: selectedProvider === 'lmstudio' ? {
+    url: config.lmstudioUrl,
+    model: config.lmstudioModel,
+    apiKey: config.lmstudioApiKey
+  } : undefined
+};
+
+const llm = LlmWrapperFactory.create(llmSettings);
 
 // Get recent funny observations for this session to avoid repetition
 if (petState) {
@@ -314,7 +349,7 @@ ${toolInfo}
 Output preview: ${userContent.slice(0, 500)}`;
       
       debug(`Calling analyzeUserMessage for tool result...`);
-      const analysis = await groq.analyzeUserMessage(
+      const analysis = await llm.analyzeUserMessage(
         toolResultPrompt,
         sessionHistory
       );
@@ -346,7 +381,7 @@ Output preview: ${userContent.slice(0, 500)}`;
     
     // Analyze user message with full context (sessionHistory already built above)
     debug(`Calling analyzeUserMessage for real user message...`);
-    const analysis = await groq.analyzeUserMessage(
+    const analysis = await llm.analyzeUserMessage(
       userContent,
       sessionHistory
     );
@@ -558,7 +593,7 @@ Output preview: ${userContent.slice(0, 500)}`;
   debug(`Workspace ID (already extracted): ${workspaceId}`);
   
   debug(`Calling analyzeExchange with: sessionId=${sessionId}, messageUuid=${message.uuid}, workspaceId=${workspaceId}`);
-  const analysis = await groq.analyzeExchange(
+  const analysis = await llm.analyzeExchange(
     context.userRequest || 'No specific request',
     claudeActions,
     sessionHistory,

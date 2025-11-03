@@ -30,9 +30,16 @@ export class FeedbackSystem {
       groqApiKey: config.groqApiKey,
       groqModel: config.groqModel,
       groqTimeout: config.groqTimeout,
-      groqMaxRetries: config.groqMaxRetries
+      groqMaxRetries: config.groqMaxRetries,
+      llmProvider: config.llmProvider,
+      lmstudioEnabled: config.lmstudioEnabled,
+      lmstudioUrl: config.lmstudioUrl,
+      lmstudioModel: config.lmstudioModel,
+      lmstudioApiKey: config.lmstudioApiKey,
+      lmstudioTimeout: config.lmstudioTimeout,
+      lmstudioMaxRetries: config.lmstudioMaxRetries
     };
-    
+
     this.analyzer = new TranscriptAnalyzer(feedbackConfig);
     this.initialized = true;
   }

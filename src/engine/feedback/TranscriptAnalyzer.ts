@@ -111,14 +111,34 @@ export class TranscriptAnalyzer {
       this.debug(`Processing message: ${message.uuid}`);
 
       // Import dependencies
-      const { GroqClient } = await import('../../llm/GroqClient');
-      const groq = new GroqClient(
-        this.config.groqApiKey,
-        this.config.groqModel,
-        this.config.groqTimeout,
-        2, // maxRetries (default)
-        this.config.dbPath // Pass database path for violation storage
-      );
+      const { LlmWrapperFactory } = await import('../../llm/LlmWrapperFactory');
+      const { buildLlmWrapperSettings } = await import('../../utils/config');
+
+      // Build settings from config (includes provider selection logic)
+      const llmSettings = {
+        provider: this.config.llmProvider === 'auto'
+          ? LlmWrapperFactory.selectProvider(
+              this.config.llmProvider,
+              this.config.lmstudioEnabled,
+              this.config.groqApiKey
+            )
+          : this.config.llmProvider,
+        model: this.config.llmProvider === 'lmstudio' ? this.config.lmstudioModel : this.config.groqModel,
+        timeout: this.config.llmProvider === 'lmstudio' ? this.config.lmstudioTimeout : this.config.groqTimeout,
+        maxRetries: this.config.llmProvider === 'lmstudio' ? this.config.lmstudioMaxRetries : this.config.groqMaxRetries,
+        dbPath: this.config.dbPath,
+        groqSettings: this.config.llmProvider !== 'lmstudio' ? {
+          apiKey: this.config.groqApiKey,
+          model: this.config.groqModel
+        } : undefined,
+        lmstudioSettings: this.config.llmProvider === 'lmstudio' ? {
+          url: this.config.lmstudioUrl,
+          model: this.config.lmstudioModel,
+          apiKey: this.config.lmstudioApiKey
+        } : undefined
+      };
+
+      const llm = LlmWrapperFactory.create(llmSettings as any);
 
       // Get session history for context
       const recentMessages = await this.processor.readTranscript(transcriptPath);
@@ -151,7 +171,7 @@ export class TranscriptAnalyzer {
       }
       
       this.debug(`Calling analyzeExchange with sessionId="${sessionId}", messageUuid="${message.uuid}", workspaceId="${workspaceId}"`);
-      const analysis = await groq.analyzeExchange(
+      const analysis = await llm.analyzeExchange(
         userRequestSummary,
         context.claudeActions || [],
         sessionHistory,
@@ -278,9 +298,15 @@ export class TranscriptAnalyzer {
       stdio: ['ignore', 'ignore', 'pipe'], // Capture stderr for debugging
       env: {
         ...process.env,
+        PET_LLM_PROVIDER: this.config.llmProvider,
         PET_GROQ_API_KEY: this.config.groqApiKey,
         PET_GROQ_MODEL: this.config.groqModel,
         PET_GROQ_TIMEOUT: String(this.config.groqTimeout),
+        LM_STUDIO_ENABLED: String(this.config.lmstudioEnabled),
+        LM_STUDIO_URL: this.config.lmstudioUrl,
+        LM_STUDIO_MODEL: this.config.lmstudioModel,
+        LM_STUDIO_API_KEY: this.config.lmstudioApiKey,
+        PET_LM_STUDIO_TIMEOUT: String(this.config.lmstudioTimeout),
         PET_FEEDBACK_BATCH_SIZE: String(this.config.batchSize),
         PET_FEEDBACK_DEBUG: process.env.PET_FEEDBACK_DEBUG,
         PET_FEEDBACK_LOG_DIR: process.env.PET_FEEDBACK_LOG_DIR
