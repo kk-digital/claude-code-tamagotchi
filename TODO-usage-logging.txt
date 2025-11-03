@@ -1,0 +1,467 @@
+================================================================================
+TODO: CLAUDE CODE USAGE AND STATUS LOGGING
+================================================================================
+Date: 2025-11-04
+Status: PENDING
+Priority: MEDIUM
+
+================================================================================
+OBJECTIVE
+================================================================================
+
+Implement comprehensive logging system for Claude Code usage and status:
+- Log /usage data every minute to JSONL file
+- Log /status data at start and every hour
+- Record session metadata: email, session_id, version, cwd, model
+- Store logs in structured JSONL format for analysis
+
+================================================================================
+REQUIREMENTS
+================================================================================
+
+1. USAGE LOGGING (Every Minute)
+   - Run /usage command every 60 seconds
+   - Parse JSON response
+   - Append to usage.jsonl file
+   - Include timestamp, session context
+
+2. STATUS LOGGING (Hourly + Startup)
+   - Run /status at application start
+   - Run /status every 3600 seconds
+   - Parse JSON response
+   - Append to status.jsonl file
+   - Extract: email, session_id, version, cwd, model
+
+3. FILE FORMAT
+   - JSONL (JSON Lines) format - one JSON object per line
+   - Files: usage.jsonl, status.jsonl
+   - Location: ~/.claude/pets/logs/ or configurable
+   - Rotation: Optional log rotation by size/date
+
+4. DATA STRUCTURE
+   usage.jsonl line format:
+   {
+     "timestamp": "2025-11-04T12:34:56.789Z",
+     "session_id": "abc123",
+     "usage_data": { /* raw /usage response */ },
+     "cwd": "/path/to/working/dir"
+   }
+
+   status.jsonl line format:
+   {
+     "timestamp": "2025-11-04T12:00:00.000Z",
+     "session_id": "abc123",
+     "email": "user@example.com",
+     "version": "claude-code-1.2.3",
+     "model": "claude-sonnet-4-5-20250929",
+     "cwd": "/path/to/working/dir",
+     "status_data": { /* raw /status response */ }
+   }
+
+================================================================================
+TECHNICAL APPROACH
+================================================================================
+
+Option 1: Separate Background Process
+- Create src/monitoring/UsageLogger.ts
+- Spawn detached process on application start
+- Use setInterval for periodic logging
+- Write to JSONL files with append mode
+- Process exits when main app exits
+
+Option 2: Integrated into StatusLine
+- Add logging to existing statusline update loop
+- Track last usage/status log time
+- Call logging functions on interval
+- Minimal overhead, same process
+
+Option 3: Shell Script with Cron
+- External bash script runs /usage and /status
+- Parse output with jq
+- Append to JSONL files
+- Scheduled via cron or systemd timer
+
+Recommended: Option 2 (Integrated)
+- No additional processes
+- Access to internal state
+- Consistent with existing architecture
+
+================================================================================
+IMPLEMENTATION PLAN
+================================================================================
+
+Phase 1: Data Collection Infrastructure
+[ ] Create src/monitoring/ directory
+[ ] Create UsageLogger.ts class
+[ ] Implement /usage command execution
+[ ] Implement /status command execution
+[ ] Parse JSON responses
+[ ] Handle command execution errors
+
+Phase 2: JSONL File Writing
+[ ] Create log directory (~/.claude/pets/logs/)
+[ ] Implement JSONL append function
+[ ] Add file rotation logic (optional)
+[ ] Handle write errors gracefully
+[ ] Ensure atomic writes
+
+Phase 3: Timing and Scheduling
+[ ] Track last usage log time
+[ ] Track last status log time
+[ ] Implement minute interval for usage
+[ ] Implement hour interval for status
+[ ] Log status on startup
+
+Phase 4: Integration
+[ ] Integrate with StatusLine or FeedbackSystem
+[ ] Add configuration options
+[ ] Test logging behavior
+[ ] Verify JSONL format correctness
+
+Phase 5: Configuration
+[ ] Add environment variables:
+    - PET_USAGE_LOGGING_ENABLED (default: false)
+    - PET_USAGE_LOG_INTERVAL (default: 60000ms)
+    - PET_STATUS_LOG_INTERVAL (default: 3600000ms)
+    - PET_LOG_DIR (default: ~/.claude/pets/logs/)
+[ ] Document in .env.example
+[ ] Update README.md
+
+Phase 6: Testing
+[ ] Test usage logging (1 minute intervals)
+[ ] Test status logging (startup + hourly)
+[ ] Verify JSONL format
+[ ] Test log file rotation
+[ ] Test error handling
+
+================================================================================
+FILE STRUCTURE
+================================================================================
+
+New files to create:
+  src/monitoring/UsageLogger.ts         # Main logging class
+  src/monitoring/CommandExecutor.ts     # Execute /usage and /status
+  src/monitoring/JsonlWriter.ts         # JSONL file writer
+  src/monitoring/types.ts               # Type definitions
+
+Modified files:
+  src/index.ts or src/statusline.ts     # Integration point
+  src/utils/config.ts                   # Add logging config
+  .env.example                          # Document env vars
+  README.md                             # Document logging feature
+
+Log files (created at runtime):
+  ~/.claude/pets/logs/usage.jsonl       # Usage data log
+  ~/.claude/pets/logs/status.jsonl      # Status data log
+  ~/.claude/pets/logs/usage.jsonl.1     # Rotated logs (optional)
+
+================================================================================
+COMMAND EXECUTION DETAILS
+================================================================================
+
+/usage Command:
+- Returns: JSON with token usage, costs, API calls
+- Execution: Via child process or Claude Code API
+- Frequency: Every 60 seconds
+- Error handling: Log error, continue (don't crash app)
+
+/status Command:
+- Returns: JSON with email, session_id, version, cwd, model
+- Execution: Via child process or Claude Code API
+- Frequency: Startup + every 3600 seconds
+- Error handling: Log error, retry on next interval
+
+Command execution method:
+- Option A: spawn('claude', ['usage'], {shell: true})
+- Option B: Internal API call (if available)
+- Option C: IPC with main Claude Code process
+
+Recommended: Option A (spawn)
+- Reliable, well-tested
+- Works in all environments
+- Same as other tool integrations
+
+================================================================================
+ERROR HANDLING
+================================================================================
+
+Scenarios to handle:
+1. Command execution fails
+   - Log error to stderr
+   - Continue operation (don't crash)
+   - Retry on next interval
+
+2. JSON parse error
+   - Log raw output
+   - Skip this interval
+   - Continue on next interval
+
+3. File write error
+   - Log to stderr
+   - Retry with backoff
+   - Disable logging if persistent failures
+
+4. Permission errors
+   - Create log directory if missing
+   - Check write permissions
+   - Provide clear error message
+
+5. Disk space errors
+   - Implement log rotation
+   - Warn when disk space low
+   - Stop logging if critical
+
+================================================================================
+CONFIGURATION OPTIONS
+================================================================================
+
+Environment Variables:
+
+# Enable usage/status logging
+PET_USAGE_LOGGING_ENABLED=false        # default: false
+
+# Log intervals
+PET_USAGE_LOG_INTERVAL=60000           # ms, default: 60000 (1 minute)
+PET_STATUS_LOG_INTERVAL=3600000        # ms, default: 3600000 (1 hour)
+
+# Log file location
+PET_LOG_DIR=~/.claude/pets/logs/       # default: ~/.claude/pets/logs/
+
+# Log rotation
+PET_LOG_MAX_SIZE=10485760              # bytes, default: 10MB
+PET_LOG_MAX_FILES=10                   # default: 10 files
+
+# Debug
+PET_LOGGING_DEBUG=false                # default: false
+
+================================================================================
+DATA ANALYSIS USE CASES
+================================================================================
+
+With JSONL logs, can analyze:
+- Token usage over time (cost tracking)
+- Model usage patterns
+- Session duration statistics
+- Working directory patterns
+- Email/user correlation
+- Claude Code version adoption
+- Peak usage hours
+- Cost optimization opportunities
+
+Analysis tools:
+- jq for command-line analysis
+- Python/pandas for data science
+- grep/awk for quick queries
+- Excel/Google Sheets for visualization
+
+Example queries:
+# Total tokens used today
+jq -s 'map(select(.timestamp | startswith("2025-11-04"))) | map(.usage_data.total_tokens // 0) | add' usage.jsonl
+
+# Models used in session
+jq -r '.model' status.jsonl | sort | uniq -c
+
+# Sessions per hour
+jq -r '.timestamp | split("T")[1] | split(":")[0]' status.jsonl | sort | uniq -c
+
+================================================================================
+TESTING CHECKLIST
+================================================================================
+
+[ ] Verify /usage command execution
+[ ] Verify /status command execution
+[ ] Check JSONL format validity (each line is valid JSON)
+[ ] Verify timestamp format (ISO 8601)
+[ ] Test 1-minute interval for usage
+[ ] Test hourly interval for status
+[ ] Test startup status log
+[ ] Verify all fields captured correctly
+[ ] Test log file creation (directory doesn't exist)
+[ ] Test log file append (file already exists)
+[ ] Test log rotation (file exceeds max size)
+[ ] Test error handling (command fails)
+[ ] Test error handling (JSON parse fails)
+[ ] Test error handling (file write fails)
+[ ] Verify no performance impact on statusline
+[ ] Test with logging disabled (default state)
+[ ] Test with logging enabled
+[ ] Verify logs persist across restarts
+
+================================================================================
+DOCUMENTATION REQUIREMENTS
+================================================================================
+
+README.md section:
+- Explain usage/status logging feature
+- Show how to enable logging
+- Explain log file location
+- Provide analysis examples
+- Link to privacy considerations
+
+.env.example:
+- Add all logging environment variables
+- Explain each variable
+- Provide recommended defaults
+
+CHANGELOG.md:
+- Document new feature
+- Note breaking changes (if any)
+- Provide migration guide (if needed)
+
+================================================================================
+PRIVACY CONSIDERATIONS
+================================================================================
+
+Important notes:
+- Logs contain email addresses (PII)
+- Logs contain working directory paths
+- Logs may contain sensitive file paths in cwd
+- Token usage may indicate proprietary information
+
+Recommendations:
+- Logging disabled by default
+- Clear documentation about what's logged
+- Option to anonymize email addresses
+- Option to exclude cwd from logs
+- Log rotation to limit retention
+- Secure file permissions (600)
+
+================================================================================
+ESTIMATED EFFORT
+================================================================================
+
+Phase 1: Data Collection         - 2 hours
+Phase 2: JSONL Writing           - 1 hour
+Phase 3: Timing/Scheduling       - 1 hour
+Phase 4: Integration             - 1 hour
+Phase 5: Configuration           - 1 hour
+Phase 6: Testing                 - 2 hours
+Documentation                    - 1 hour
+
+Total: ~9 hours
+
+================================================================================
+PRIORITY AND DEPENDENCIES
+================================================================================
+
+Priority: MEDIUM
+- Not critical for core functionality
+- Valuable for usage tracking and cost analysis
+- Can be added incrementally
+
+Dependencies:
+- Claude Code CLI must support /usage and /status commands
+- Filesystem write permissions
+- Bun runtime (for TypeScript execution)
+
+Blockers:
+- None (can implement anytime)
+
+Related features:
+- Existing feedback database (similar pattern)
+- StatusLine update loop (integration point)
+- Configuration system (env vars pattern)
+
+================================================================================
+FUTURE ENHANCEMENTS
+================================================================================
+
+Possible future additions:
+- Real-time dashboard (web UI)
+- Cost alerts (email/notification)
+- Usage graphs (ASCII or web-based)
+- Export to CSV/JSON
+- Integration with monitoring tools (Prometheus, Grafana)
+- Anomaly detection (unusual usage patterns)
+- Team usage aggregation
+- Billing/invoicing integration
+
+================================================================================
+IMPLEMENTATION EXAMPLE
+================================================================================
+
+Pseudocode for UsageLogger.ts:
+
+```typescript
+export class UsageLogger {
+  private usageInterval: Timer | null = null;
+  private statusInterval: Timer | null = null;
+  private lastUsageLog: number = 0;
+  private lastStatusLog: number = 0;
+
+  constructor(private config: LoggingConfig) {}
+
+  start() {
+    // Log status immediately on start
+    this.logStatus();
+
+    // Start usage logging (every minute)
+    this.usageInterval = setInterval(() => {
+      this.logUsage();
+    }, this.config.usageInterval);
+
+    // Start status logging (every hour)
+    this.statusInterval = setInterval(() => {
+      this.logStatus();
+    }, this.config.statusInterval);
+  }
+
+  private async logUsage() {
+    try {
+      const usage = await this.executeUsageCommand();
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        session_id: this.getSessionId(),
+        usage_data: usage,
+        cwd: process.cwd()
+      };
+      await this.appendToJsonl('usage.jsonl', logEntry);
+    } catch (error) {
+      this.logError('Usage logging failed', error);
+    }
+  }
+
+  private async logStatus() {
+    try {
+      const status = await this.executeStatusCommand();
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        session_id: status.session_id,
+        email: status.email,
+        version: status.version,
+        model: status.model,
+        cwd: status.cwd,
+        status_data: status
+      };
+      await this.appendToJsonl('status.jsonl', logEntry);
+    } catch (error) {
+      this.logError('Status logging failed', error);
+    }
+  }
+
+  stop() {
+    if (this.usageInterval) clearInterval(this.usageInterval);
+    if (this.statusInterval) clearInterval(this.statusInterval);
+  }
+}
+```
+
+================================================================================
+ACCEPTANCE CRITERIA
+================================================================================
+
+Feature complete when:
+[ ] Usage logged every minute to JSONL file
+[ ] Status logged at startup and every hour to JSONL file
+[ ] All required fields captured (email, session_id, version, cwd, model)
+[ ] Logging disabled by default
+[ ] Configuration via environment variables
+[ ] Error handling prevents crashes
+[ ] JSONL format valid (parseable by jq)
+[ ] Documentation complete (README, .env.example)
+[ ] Tests passing
+[ ] No performance impact on core functionality
+
+================================================================================
+END OF TODO
+================================================================================
