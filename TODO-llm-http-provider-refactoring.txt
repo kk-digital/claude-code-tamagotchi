@@ -1,0 +1,678 @@
+================================================================================
+TODO: LlmHttpProvider Refactoring (DEFERRED)
+================================================================================
+Status: DEFERRED - Implement when adding 3rd HTTP-based provider
+Trigger: When adding Ollama, Anthropic, or other HTTP-based LLM provider
+Current: 2 providers (GroqProvider uses SDK, LMStudioProvider uses HTTP)
+Date Created: 2025-11-04
+Estimated Effort: 3-4 hours
+
+================================================================================
+RATIONALE
+================================================================================
+
+PROBLEM:
+- LMStudioProvider implements HTTP logic directly (fetch, timeout, retry)
+- When adding 3rd HTTP provider (Ollama, Anthropic), will duplicate this logic
+- Current design: Each provider handles its own HTTP calls
+- "Rule of Three": Wait for 3 instances of duplication before abstracting
+
+WHY DEFER:
+- Current design works fine with 2 providers
+- GroqProvider uses SDK (not HTTP) - doesn't need refactoring
+- LMStudioProvider is only HTTP provider currently
+- No code duplication yet (only 1 HTTP implementation)
+- Premature abstraction is worse than duplication
+
+WHEN TO IMPLEMENT:
+- When adding Ollama provider (HTTP-based, OpenAI-compatible API)
+- When adding Anthropic provider (HTTP-based, custom API)
+- When adding local model providers (llamafile, Jan, etc.)
+- When you see copy-paste of timeout/retry logic in new provider
+
+================================================================================
+REQUIREMENTS
+================================================================================
+
+1. MAINTAIN EXISTING FUNCTIONALITY
+   - All existing providers must continue to work without changes
+   - GroqProvider uses SDK (groq-sdk) - should NOT extend LlmHttpProvider
+   - LMStudioProvider uses HTTP - should extend LlmHttpProvider
+   - No breaking changes to LlmWrapperFactory or consumer code
+   - All existing tests must pass without modification
+
+2. SHARED HTTP LOGIC (extract to LlmHttpProvider)
+   - Timeout handling (configurable per provider)
+   - Retry logic (configurable max retries)
+   - Streaming support (AsyncIterator<string> for streaming responses)
+   - Error handling (network errors, HTTP errors, timeout errors)
+   - Request/response logging (optional, configurable)
+   - HTTP method support (POST, GET for different providers)
+   - Header management (Content-Type, Authorization, custom headers)
+
+3. PROVIDER CUSTOMIZATION (template method pattern)
+   - Each provider defines: getEndpoint() - URL for API calls
+   - Each provider defines: buildRequestBody(prompt) - Request payload format
+   - Each provider defines: parseResponse(response) - Extract LlmResponse from API response
+   - Each provider defines: buildHeaders() - Provider-specific headers
+   - Optional: parseStreamingChunk(chunk) - For streaming responses
+
+4. STRICT ERROR HANDLING (consistent with project philosophy)
+   - ASSERT all HTTP operations succeed
+   - CRASH immediately on network errors (no graceful degradation)
+   - NO silent failures, NO retry on unrecoverable errors
+   - Clear error messages with: URL, HTTP status, response body, headers
+   - Log errors to stderr before crashing
+   - NO fallback providers, NO automatic switching
+
+5. CONFIGURATION
+   - Timeout configurable per provider (PET_[PROVIDER]_TIMEOUT)
+   - Max retries configurable per provider (PET_[PROVIDER]_MAX_RETRIES)
+   - Retry only on transient errors (network, 5xx, timeout)
+   - NO retry on 4xx errors (client errors are permanent)
+   - Streaming enabled/disabled per provider
+
+6. TESTING
+   - Unit tests for LlmHttpProvider base class
+   - Integration tests for each HTTP provider
+   - Timeout tests (verify timeout enforced)
+   - Retry tests (verify retry logic)
+   - Error handling tests (network errors, HTTP errors)
+   - Streaming tests (if implemented)
+
+================================================================================
+PROPOSED ARCHITECTURE
+================================================================================
+
+CURRENT HIERARCHY:
+  LlmWrapper (abstract)
+      ↓
+  GroqProvider (uses groq-sdk)
+  LMStudioProvider (uses fetch directly)
+
+REFACTORED HIERARCHY:
+  LlmWrapper (abstract - all providers)
+      ↓
+      ├─ GroqProvider (extends LlmWrapper, uses SDK)
+      ↓
+      └─ LlmHttpProvider (abstract - HTTP providers only) ← NEW
+             ↓
+             ├─ LMStudioProvider (extends LlmHttpProvider)
+             ├─ OllamaProvider (extends LlmHttpProvider)
+             ├─ AnthropicProvider (extends LlmHttpProvider)
+             └─ OpenAIProvider (extends LlmHttpProvider)
+
+KEY INSIGHT:
+- SDK-based providers (GroqProvider) extend LlmWrapper directly
+- HTTP-based providers extend LlmHttpProvider (which extends LlmWrapper)
+- LlmHttpProvider provides shared HTTP implementation
+- Each HTTP provider customizes endpoint, request format, response parsing
+
+================================================================================
+IMPLEMENTATION PLAN
+================================================================================
+
+PHASE 1: Create LlmHttpProvider Base Class (2 hours)
+[ ] Create src/llm/LlmHttpProvider.ts
+[ ] Extend LlmWrapper abstract class
+[ ] Implement shared HTTP logic:
+    [ ] async httpPost<T>(url: string, body: object, headers: Record<string, string>): Promise<T>
+    [ ] async httpGet<T>(url: string, headers: Record<string, string>): Promise<T>
+    [ ] Timeout enforcement using AbortController
+    [ ] Retry logic for transient errors (network, 5xx, timeout)
+    [ ] Error handling with detailed messages
+    [ ] ASSERT operations succeed, CRASH on failures
+[ ] Define abstract methods for provider customization:
+    [ ] protected abstract getEndpoint(): string
+    [ ] protected abstract buildRequestBody(prompt: string): object
+    [ ] protected abstract parseResponse(response: any): LlmResponse
+    [ ] protected abstract buildHeaders(): Record<string, string>
+[ ] Implement callLlm() using template method pattern:
+    [ ] Get endpoint from subclass
+    [ ] Build request body from subclass
+    [ ] Build headers from subclass
+    [ ] Execute HTTP POST with timeout/retry
+    [ ] Parse response from subclass
+    [ ] Return LlmResponse
+[ ] TypeScript compiles successfully
+
+PHASE 2: Refactor LMStudioProvider (1 hour)
+[ ] Update LMStudioProvider to extend LlmHttpProvider (not LlmWrapper)
+[ ] Implement getEndpoint(): return `${this.settings.url}/chat/completions`
+[ ] Implement buildRequestBody(prompt): return OpenAI-compatible request
+[ ] Implement parseResponse(response): extract text from response.choices[0].message.content
+[ ] Implement buildHeaders(): return Content-Type and Authorization headers
+[ ] Delete duplicate HTTP logic from LMStudioProvider:
+    [ ] Remove fetch() calls
+    [ ] Remove timeout logic
+    [ ] Remove retry logic
+    [ ] Keep only provider-specific customization
+[ ] Test LMStudioProvider still works correctly
+[ ] Run test-lmstudio.sh to verify functionality
+[ ] Run test-complete.sh to verify integration
+
+PHASE 3: Update LlmWrapper (30 minutes)
+[ ] Remove callLlmWithTimeout() from LlmWrapper (moved to LlmHttpProvider)
+[ ] Update LlmWrapper to only have abstract callLlm() method
+[ ] GroqProvider continues to extend LlmWrapper (no changes needed)
+[ ] Update LlmWrapper interface documentation
+[ ] TypeScript compiles successfully
+
+PHASE 4: Add New HTTP Provider (example: Ollama) (1 hour)
+[ ] Create src/llm/providers/OllamaProvider.ts
+[ ] Extend LlmHttpProvider
+[ ] Implement getEndpoint(): return `${this.settings.url}/api/generate`
+[ ] Implement buildRequestBody(prompt): return Ollama-specific format
+[ ] Implement parseResponse(response): extract text from response.response
+[ ] Implement buildHeaders(): return Ollama headers
+[ ] Update LlmWrapperFactory to create OllamaProvider
+[ ] Add Ollama configuration to src/utils/config.ts
+[ ] Add OLLAMA_ENABLED, OLLAMA_URL, OLLAMA_MODEL env vars
+[ ] Test OllamaProvider with local Ollama instance
+[ ] TypeScript compiles successfully
+
+PHASE 5: Testing (1 hour)
+[ ] Create test-ollama.sh (similar to test-lmstudio.sh)
+[ ] Test all three providers:
+    [ ] GroqProvider (SDK-based)
+    [ ] LMStudioProvider (HTTP-based, refactored)
+    [ ] OllamaProvider (HTTP-based, new)
+[ ] Verify timeout enforcement works
+[ ] Verify retry logic works (simulate transient errors)
+[ ] Verify error handling works (simulate network errors)
+[ ] Run test-complete.sh for all providers
+[ ] Update README.md with Ollama provider documentation
+
+PHASE 6: Documentation (30 minutes)
+[ ] Update PROGRESS-CHECKPOINT.txt with refactoring commits
+[ ] Document LlmHttpProvider architecture in comments
+[ ] Update README.md with provider selection guide
+[ ] Add example of adding new HTTP provider to README
+[ ] Create diagram of provider hierarchy
+[ ] Delete this TODO file after completion
+
+TOTAL ESTIMATED TIME: 6 hours
+
+================================================================================
+CODE EXAMPLES
+================================================================================
+
+EXAMPLE: LlmHttpProvider Base Class
+────────────────────────────────────────────────────────────────────────────
+
+// src/llm/LlmHttpProvider.ts
+import { LlmWrapper } from './LlmWrapper';
+import { LlmResponse, LlmWrapperSettings } from './types';
+
+export abstract class LlmHttpProvider extends LlmWrapper {
+  constructor(settings: LlmWrapperSettings) {
+    super(settings);
+  }
+
+  // Template method - calls abstract methods from subclasses
+  protected async callLlm(prompt: string): Promise<LlmResponse> {
+    const endpoint = this.getEndpoint();
+    const body = this.buildRequestBody(prompt);
+    const headers = this.buildHeaders();
+
+    const response = await this.httpPost(endpoint, body, headers);
+    return this.parseResponse(response);
+  }
+
+  // Abstract methods - each provider implements these
+  protected abstract getEndpoint(): string;
+  protected abstract buildRequestBody(prompt: string): object;
+  protected abstract parseResponse(response: any): LlmResponse;
+  protected abstract buildHeaders(): Record<string, string>;
+
+  // Shared HTTP implementation
+  protected async httpPost<T>(
+    url: string,
+    body: object,
+    headers: Record<string, string>
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.settings.timeout);
+
+    let lastError: Error | null = null;
+    const maxRetries = this.settings.maxRetries;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...headers,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        // ASSERT HTTP success
+        if (!response.ok) {
+          const errorBody = await response.text();
+          const errorMsg = `HTTP ${response.status}: ${errorBody}`;
+
+          // NO retry on 4xx (client errors are permanent)
+          if (response.status >= 400 && response.status < 500) {
+            console.error(`[LlmHttpProvider] Client error (no retry): ${errorMsg}`);
+            console.error(`[LlmHttpProvider] URL: ${url}`);
+            console.error(`[LlmHttpProvider] Headers: ${JSON.stringify(headers)}`);
+            throw new Error(errorMsg);
+          }
+
+          // Retry on 5xx (server errors are transient)
+          if (attempt < maxRetries) {
+            console.warn(`[LlmHttpProvider] Retry ${attempt + 1}/${maxRetries}: ${errorMsg}`);
+            lastError = new Error(errorMsg);
+            continue;
+          }
+
+          // Max retries exceeded - CRASH
+          console.error(`[LlmHttpProvider] Max retries exceeded: ${errorMsg}`);
+          console.error(`[LlmHttpProvider] URL: ${url}`);
+          throw new Error(errorMsg);
+        }
+
+        return await response.json();
+
+      } catch (error) {
+        clearTimeout(timeoutId);
+
+        // Timeout error
+        if (error instanceof Error && error.name === 'AbortError') {
+          const timeoutMsg = `Request timeout after ${this.settings.timeout}ms`;
+
+          if (attempt < maxRetries) {
+            console.warn(`[LlmHttpProvider] Retry ${attempt + 1}/${maxRetries}: ${timeoutMsg}`);
+            lastError = new Error(timeoutMsg);
+            continue;
+          }
+
+          console.error(`[LlmHttpProvider] Max retries exceeded: ${timeoutMsg}`);
+          console.error(`[LlmHttpProvider] URL: ${url}`);
+          throw new Error(timeoutMsg);
+        }
+
+        // Network error
+        const networkMsg = `Network error: ${error}`;
+
+        if (attempt < maxRetries) {
+          console.warn(`[LlmHttpProvider] Retry ${attempt + 1}/${maxRetries}: ${networkMsg}`);
+          lastError = error instanceof Error ? error : new Error(String(error));
+          continue;
+        }
+
+        console.error(`[LlmHttpProvider] Max retries exceeded: ${networkMsg}`);
+        console.error(`[LlmHttpProvider] URL: ${url}`);
+        throw error;
+      }
+    }
+
+    // Should never reach here (all paths throw or return)
+    throw lastError || new Error('Unknown error in httpPost');
+  }
+}
+
+────────────────────────────────────────────────────────────────────────────
+
+EXAMPLE: Refactored LMStudioProvider
+────────────────────────────────────────────────────────────────────────────
+
+// src/llm/providers/LMStudioProvider.ts
+import { LlmHttpProvider } from '../LlmHttpProvider';
+import { LlmResponse, LlmWrapperSettings } from '../types';
+
+export class LMStudioProvider extends LlmHttpProvider {
+  constructor(settings: LlmWrapperSettings) {
+    super(settings);
+  }
+
+  protected getEndpoint(): string {
+    return `${this.settings.url}/chat/completions`;
+  }
+
+  protected buildRequestBody(prompt: string): object {
+    return {
+      model: this.settings.model,
+      messages: [
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 500,
+    };
+  }
+
+  protected parseResponse(response: any): LlmResponse {
+    // ASSERT response structure is valid
+    if (!response.choices || !response.choices[0] || !response.choices[0].message) {
+      console.error('[LMStudioProvider] Invalid response structure:', JSON.stringify(response));
+      throw new Error('Invalid response from LM Studio: missing choices[0].message');
+    }
+
+    return {
+      text: response.choices[0].message.content,
+      raw: response,
+    };
+  }
+
+  protected buildHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Optional API key
+    if (this.settings.apiKey) {
+      headers['Authorization'] = `Bearer ${this.settings.apiKey}`;
+    }
+
+    return headers;
+  }
+
+  // analyzeUserMessage and analyzeExchange remain unchanged
+  // (these are provider-specific implementations)
+}
+
+────────────────────────────────────────────────────────────────────────────
+
+EXAMPLE: New OllamaProvider
+────────────────────────────────────────────────────────────────────────────
+
+// src/llm/providers/OllamaProvider.ts
+import { LlmHttpProvider } from '../LlmHttpProvider';
+import { LlmResponse, LlmWrapperSettings } from '../types';
+
+export class OllamaProvider extends LlmHttpProvider {
+  constructor(settings: LlmWrapperSettings) {
+    super(settings);
+  }
+
+  protected getEndpoint(): string {
+    // Ollama uses different endpoint format
+    return `${this.settings.url}/api/generate`;
+  }
+
+  protected buildRequestBody(prompt: string): object {
+    // Ollama uses different request format than OpenAI
+    return {
+      model: this.settings.model,
+      prompt: prompt,
+      stream: false,
+      options: {
+        temperature: 0.7,
+        num_predict: 500,
+      },
+    };
+  }
+
+  protected parseResponse(response: any): LlmResponse {
+    // ASSERT response structure is valid
+    if (!response.response) {
+      console.error('[OllamaProvider] Invalid response structure:', JSON.stringify(response));
+      throw new Error('Invalid response from Ollama: missing response field');
+    }
+
+    return {
+      text: response.response,
+      raw: response,
+    };
+  }
+
+  protected buildHeaders(): Record<string, string> {
+    // Ollama doesn't require authentication by default
+    return {
+      'Content-Type': 'application/json',
+    };
+  }
+
+  async analyzeUserMessage(message: string): Promise<any> {
+    const prompt = `Analyze this user message for tone and sentiment: "${message}"`;
+    const response = await this.callLlm(prompt);
+    return JSON.parse(response.text);
+  }
+
+  async analyzeExchange(messages: any[]): Promise<any> {
+    const prompt = `Analyze this conversation exchange: ${JSON.stringify(messages)}`;
+    const response = await this.callLlm(prompt);
+    return JSON.parse(response.text);
+  }
+}
+
+────────────────────────────────────────────────────────────────────────────
+
+EXAMPLE: Updated LlmWrapperFactory
+────────────────────────────────────────────────────────────────────────────
+
+// src/llm/LlmWrapperFactory.ts
+import { LlmWrapper } from './LlmWrapper';
+import { LlmWrapperSettings } from './types';
+import { GroqProvider } from './providers/GroqProvider';
+import { LMStudioProvider } from './providers/LMStudioProvider';
+import { OllamaProvider } from './providers/OllamaProvider';
+
+export class LlmWrapperFactory {
+  static create(settings: LlmWrapperSettings): LlmWrapper {
+    // Explicit provider selection (no auto mode)
+    switch (settings.provider) {
+      case 'groq':
+        return new GroqProvider(settings);
+
+      case 'lmstudio':
+        return new LMStudioProvider(settings);
+
+      case 'ollama':
+        return new OllamaProvider(settings);
+
+      default:
+        throw new Error(`Unknown LLM provider: ${settings.provider}`);
+    }
+  }
+}
+
+────────────────────────────────────────────────────────────────────────────
+
+================================================================================
+CONFIGURATION EXAMPLES
+================================================================================
+
+.env file with Ollama provider:
+────────────────────────────────────────────────────────────────────────────
+
+# LLM Provider Configuration
+PET_LLM_PROVIDER=ollama
+
+# Ollama Settings
+OLLAMA_ENABLED=true
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+PET_OLLAMA_TIMEOUT=5000
+PET_OLLAMA_MAX_RETRIES=1
+
+# LM Studio Settings (alternative)
+# PET_LLM_PROVIDER=lmstudio
+# LM_STUDIO_ENABLED=true
+# LM_STUDIO_URL=http://localhost:1234/v1
+# LM_STUDIO_MODEL=openai/gpt-oss-120b
+# PET_LM_STUDIO_TIMEOUT=5000
+# PET_LM_STUDIO_MAX_RETRIES=1
+
+# Groq Settings (alternative)
+# PET_LLM_PROVIDER=groq
+# PET_GROQ_API_KEY=your-api-key
+# PET_GROQ_MODEL=llama-3.1-70b-versatile
+# PET_GROQ_TIMEOUT=2000
+# PET_GROQ_MAX_RETRIES=2
+
+────────────────────────────────────────────────────────────────────────────
+
+Config.ts updates:
+────────────────────────────────────────────────────────────────────────────
+
+export interface Config {
+  // ... existing fields ...
+
+  // Ollama configuration
+  ollamaEnabled: boolean;
+  ollamaUrl: string;
+  ollamaModel: string;
+  ollamaTimeout: number;
+  ollamaMaxRetries: number;
+}
+
+export function loadConfig(): Config {
+  return {
+    // ... existing config ...
+
+    // Ollama
+    ollamaEnabled: process.env.OLLAMA_ENABLED === 'true',
+    ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
+    ollamaModel: process.env.OLLAMA_MODEL || 'llama3.2',
+    ollamaTimeout: parseInt(process.env.PET_OLLAMA_TIMEOUT || '5000'),
+    ollamaMaxRetries: parseInt(process.env.PET_OLLAMA_MAX_RETRIES || '1'),
+  };
+}
+
+export function buildLlmWrapperSettings(config: Config): LlmWrapperSettings {
+  const provider = config.llmProvider;
+
+  // Validate explicit provider
+  if (provider !== 'groq' && provider !== 'lmstudio' && provider !== 'ollama') {
+    throw new Error(`Invalid provider: ${provider}. Must be 'groq', 'lmstudio', or 'ollama'`);
+  }
+
+  if (provider === 'ollama') {
+    if (!config.ollamaEnabled) {
+      throw new Error('Ollama provider selected but OLLAMA_ENABLED=false');
+    }
+    return {
+      provider: 'ollama',
+      url: config.ollamaUrl,
+      model: config.ollamaModel,
+      timeout: config.ollamaTimeout,
+      maxRetries: config.ollamaMaxRetries,
+    };
+  }
+
+  // ... existing groq and lmstudio logic ...
+}
+
+────────────────────────────────────────────────────────────────────────────
+
+================================================================================
+TESTING CHECKLIST
+================================================================================
+
+PRE-REFACTORING TESTS (establish baseline):
+[ ] Run test-lmstudio.sh - verify all tests pass
+[ ] Run test-complete.sh - verify all tests pass
+[ ] Test GroqProvider with real API key
+[ ] Test LMStudioProvider with real LM Studio instance
+[ ] Record response times and behavior for comparison
+
+POST-REFACTORING TESTS (verify no regressions):
+[ ] Run test-lmstudio.sh - all tests must still pass
+[ ] Run test-complete.sh - all tests must still pass
+[ ] Test GroqProvider - behavior unchanged
+[ ] Test LMStudioProvider - behavior unchanged
+[ ] Response times within 10% of baseline
+[ ] Error messages are clear and actionable
+
+NEW PROVIDER TESTS (Ollama):
+[ ] Create test-ollama.sh script
+[ ] Test Ollama connectivity
+[ ] Test chat completion (simple prompt)
+[ ] Test timeout enforcement
+[ ] Test retry logic (simulate network errors)
+[ ] Test error handling (invalid model, connection refused)
+[ ] Performance measurement (response times)
+[ ] Integration test with Tamagotchi app
+
+UNIT TESTS (LlmHttpProvider):
+[ ] Test httpPost() with successful response
+[ ] Test httpPost() with 4xx error (no retry)
+[ ] Test httpPost() with 5xx error (retry)
+[ ] Test httpPost() with timeout (retry)
+[ ] Test httpPost() with network error (retry)
+[ ] Test httpPost() with max retries exceeded (crash)
+[ ] Test buildHeaders() called correctly
+[ ] Test getEndpoint() called correctly
+[ ] Test buildRequestBody() called correctly
+[ ] Test parseResponse() called correctly
+
+================================================================================
+SUCCESS CRITERIA
+================================================================================
+
+MUST HAVE:
+[✓] All existing tests pass without modification
+[✓] GroqProvider works unchanged (uses SDK, not HTTP)
+[✓] LMStudioProvider works with refactored code (uses LlmHttpProvider)
+[✓] New provider (Ollama) works correctly
+[✓] Timeout enforcement works for all HTTP providers
+[✓] Retry logic works for all HTTP providers
+[✓] Error handling is consistent across all providers
+[✓] TypeScript compiles without errors
+[✓] No breaking changes to public APIs
+[✓] Documentation updated (README, comments)
+
+NICE TO HAVE:
+[ ] Streaming support in LlmHttpProvider
+[ ] Request/response logging (configurable)
+[ ] Metrics collection (response times, error rates)
+[ ] Circuit breaker pattern (stop retrying after N failures)
+[ ] Connection pooling (reuse HTTP connections)
+
+================================================================================
+MIGRATION NOTES
+================================================================================
+
+BREAKING CHANGES:
+- None (internal refactoring only)
+
+API CHANGES:
+- None (LlmWrapperFactory.create() signature unchanged)
+
+CONFIGURATION CHANGES:
+- Add Ollama configuration (optional, only if using Ollama)
+- Existing Groq and LM Studio config unchanged
+
+CODE CHANGES:
+- LMStudioProvider extends LlmHttpProvider (internal change)
+- LlmWrapper.callLlmWithTimeout() removed (internal change)
+- Consumer code unchanged (TranscriptAnalyzer, FeedbackSystem, etc.)
+
+ROLLBACK PLAN:
+If refactoring causes issues:
+1. Revert all commits from this phase
+2. Return to current working state (LMStudioProvider with direct fetch)
+3. Document issues encountered
+4. Re-plan refactoring approach
+
+================================================================================
+REFERENCE DOCUMENTS
+================================================================================
+
+Related files:
+- src/llm/LlmWrapper.ts (current abstract base class)
+- src/llm/LlmWrapperFactory.ts (provider factory)
+- src/llm/providers/GroqProvider.ts (SDK-based provider)
+- src/llm/providers/LMStudioProvider.ts (HTTP-based provider)
+- PROGRESS-CHECKPOINT.txt (LM Studio integration history)
+- TODO-usage-logging.txt (separate feature, not related)
+
+Design patterns:
+- Template Method Pattern (LlmHttpProvider defines algorithm, subclasses implement steps)
+- Factory Pattern (LlmWrapperFactory creates providers)
+- Strategy Pattern (different providers implement same interface)
+
+References:
+- OpenAI API documentation: https://platform.openai.com/docs/api-reference
+- Ollama API documentation: https://github.com/ollama/ollama/blob/main/docs/api.md
+- LM Studio documentation: https://lmstudio.ai/docs
+
+================================================================================
+END OF TODO
+================================================================================
