@@ -31,14 +31,25 @@ REQUIREMENTS
    - Parse JSON response
    - Append to status.jsonl file
    - Extract: email, session_id, version, cwd, model
+   - Extract system diagnostics: warnings, permissions, config mismatches
 
-3. FILE FORMAT
+3. SYSTEM DIAGNOSTICS LOGGING
+   - Capture all diagnostic warnings from /status output
+   - Log permission issues (auto-update permissions, sudo requirements)
+   - Log installation config mismatches (npm-global vs unknown)
+   - Track diagnostic trends over time
+   - Examples:
+     - "Insufficient permissions for auto-updates"
+     - "No write permissions for auto-updates (requires sudo)"
+     - "Installation config mismatch: running npm-global but config says unknown"
+
+4. FILE FORMAT
    - JSONL (JSON Lines) format - one JSON object per line
-   - Files: usage.jsonl, status.jsonl
+   - Files: usage.jsonl, status.jsonl, diagnostics.jsonl
    - Location: ~/.claude/pets/logs/ or configurable
    - Rotation: Optional log rotation by size/date
 
-4. DATA STRUCTURE
+5. DATA STRUCTURE
    usage.jsonl line format:
    {
      "timestamp": "2025-11-04T12:34:56.789Z",
@@ -55,7 +66,35 @@ REQUIREMENTS
      "version": "claude-code-1.2.3",
      "model": "claude-sonnet-4-5-20250929",
      "cwd": "/path/to/working/dir",
-     "status_data": { /* raw /status response */ }
+     "status_data": { /* raw /status response */ },
+     "diagnostics": {
+       "warnings": [
+         "Insufficient permissions for auto-updates",
+         "No write permissions for auto-updates (requires sudo)"
+       ],
+       "config_mismatches": [
+         "Installation config mismatch: running npm-global but config says unknown"
+       ],
+       "permissions": {
+         "auto_update": false,
+         "requires_sudo": true
+       }
+     }
+   }
+
+   diagnostics.jsonl line format (optional separate file):
+   {
+     "timestamp": "2025-11-04T12:00:00.000Z",
+     "session_id": "abc123",
+     "diagnostic_type": "permission_warning",
+     "severity": "warning",
+     "message": "Insufficient permissions for auto-updates",
+     "details": {
+       "permission": "auto_update",
+       "requires_sudo": true,
+       "installation_method": "npm-global",
+       "config_method": "unknown"
+     }
    }
 
 ================================================================================
@@ -96,6 +135,8 @@ Phase 1: Data Collection Infrastructure
 [ ] Implement /usage command execution
 [ ] Implement /status command execution
 [ ] Parse JSON responses
+[ ] Extract system diagnostics from /status
+[ ] Parse diagnostic warnings and config mismatches
 [ ] Handle command execution errors
 
 Phase 2: JSONL File Writing
@@ -130,7 +171,10 @@ Phase 5: Configuration
 Phase 6: Testing
 [ ] Test usage logging (1 minute intervals)
 [ ] Test status logging (startup + hourly)
+[ ] Test diagnostic extraction and logging
 [ ] Verify JSONL format
+[ ] Verify diagnostic warnings captured
+[ ] Verify config mismatches captured
 [ ] Test log file rotation
 [ ] Test error handling
 
@@ -152,7 +196,8 @@ Modified files:
 
 Log files (created at runtime):
   ~/.claude/pets/logs/usage.jsonl       # Usage data log
-  ~/.claude/pets/logs/status.jsonl      # Status data log
+  ~/.claude/pets/logs/status.jsonl      # Status data log (includes diagnostics)
+  ~/.claude/pets/logs/diagnostics.jsonl # Optional separate diagnostics log
   ~/.claude/pets/logs/usage.jsonl.1     # Rotated logs (optional)
 
 ================================================================================
@@ -166,10 +211,15 @@ COMMAND EXECUTION DETAILS
 - Error handling: Log error, continue (don't crash app)
 
 /status Command:
-- Returns: JSON with email, session_id, version, cwd, model
+- Returns: JSON with email, session_id, version, cwd, model, diagnostics
+- System Diagnostics section contains:
+  - Permission warnings (auto-update permissions, sudo requirements)
+  - Config mismatches (installation method vs config method)
+  - Other system health indicators
 - Execution: Via child process or Claude Code API
 - Frequency: Startup + every 3600 seconds
 - Error handling: Log error, retry on next interval
+- Parsing: Extract diagnostics section from JSON/text output
 
 Command execution method:
 - Option A: spawn('claude', ['usage'], {shell: true})
@@ -264,28 +314,47 @@ jq -r '.model' status.jsonl | sort | uniq -c
 # Sessions per hour
 jq -r '.timestamp | split("T")[1] | split(":")[0]' status.jsonl | sort | uniq -c
 
+# All diagnostic warnings
+jq -r '.diagnostics.warnings[]?' status.jsonl | sort | uniq -c
+
+# Config mismatches over time
+jq -r 'select(.diagnostics.config_mismatches) | .timestamp + " " + (.diagnostics.config_mismatches | join(", "))' status.jsonl
+
+# Permission issues timeline
+jq -r 'select(.diagnostics.permissions.auto_update == false) | .timestamp + " - Auto-update permission: " + (.diagnostics.permissions.auto_update | tostring)' status.jsonl
+
+# Sessions with sudo requirements
+jq -r 'select(.diagnostics.permissions.requires_sudo == true) | .email + " (" + .timestamp + ")"' status.jsonl | uniq
+
 ================================================================================
 TESTING CHECKLIST
 ================================================================================
 
 [ ] Verify /usage command execution
 [ ] Verify /status command execution
+[ ] Verify system diagnostics extraction from /status
 [ ] Check JSONL format validity (each line is valid JSON)
 [ ] Verify timestamp format (ISO 8601)
 [ ] Test 1-minute interval for usage
 [ ] Test hourly interval for status
 [ ] Test startup status log
-[ ] Verify all fields captured correctly
+[ ] Verify all fields captured correctly (email, session_id, version, cwd, model)
+[ ] Verify diagnostics fields captured (warnings, config_mismatches, permissions)
+[ ] Test diagnostic warning parsing ("Insufficient permissions for auto-updates")
+[ ] Test config mismatch parsing ("running npm-global but config says unknown")
+[ ] Test permission flags extraction (auto_update, requires_sudo)
 [ ] Test log file creation (directory doesn't exist)
 [ ] Test log file append (file already exists)
 [ ] Test log rotation (file exceeds max size)
 [ ] Test error handling (command fails)
 [ ] Test error handling (JSON parse fails)
+[ ] Test error handling (diagnostics missing)
 [ ] Test error handling (file write fails)
 [ ] Verify no performance impact on statusline
 [ ] Test with logging disabled (default state)
 [ ] Test with logging enabled
 [ ] Verify logs persist across restarts
+[ ] Test diagnostic query examples (jq queries)
 
 ================================================================================
 DOCUMENTATION REQUIREMENTS
@@ -293,9 +362,11 @@ DOCUMENTATION REQUIREMENTS
 
 README.md section:
 - Explain usage/status logging feature
+- Explain system diagnostics logging
 - Show how to enable logging
 - Explain log file location
-- Provide analysis examples
+- Provide analysis examples (including diagnostic queries)
+- Document diagnostic warning types
 - Link to privacy considerations
 
 .env.example:
@@ -375,6 +446,10 @@ Possible future additions:
 - Anomaly detection (unusual usage patterns)
 - Team usage aggregation
 - Billing/invoicing integration
+- Diagnostic trend analysis (tracking permission issues over time)
+- Alert on config mismatches (notify when installation method changes)
+- Permission health score (track sudo requirements, auto-update capability)
+- Diagnostic report generation (weekly summary of system health)
 
 ================================================================================
 IMPLEMENTATION EXAMPLE
@@ -424,6 +499,8 @@ export class UsageLogger {
   private async logStatus() {
     try {
       const status = await this.executeStatusCommand();
+      const diagnostics = this.extractDiagnostics(status);
+
       const logEntry = {
         timestamp: new Date().toISOString(),
         session_id: status.session_id,
@@ -431,12 +508,53 @@ export class UsageLogger {
         version: status.version,
         model: status.model,
         cwd: status.cwd,
-        status_data: status
+        status_data: status,
+        diagnostics: {
+          warnings: diagnostics.warnings,
+          config_mismatches: diagnostics.configMismatches,
+          permissions: {
+            auto_update: diagnostics.autoUpdatePermission,
+            requires_sudo: diagnostics.requiresSudo
+          }
+        }
       };
       await this.appendToJsonl('status.jsonl', logEntry);
     } catch (error) {
       this.logError('Status logging failed', error);
     }
+  }
+
+  private extractDiagnostics(status: any): Diagnostics {
+    // Parse /status output for diagnostic warnings
+    const warnings: string[] = [];
+    const configMismatches: string[] = [];
+    let autoUpdatePermission = true;
+    let requiresSudo = false;
+
+    // Extract from "System Diagnostics" section
+    const diagnosticsText = status.system_diagnostics || status.diagnostics || '';
+
+    if (diagnosticsText.includes('Insufficient permissions for auto-updates')) {
+      warnings.push('Insufficient permissions for auto-updates');
+      autoUpdatePermission = false;
+    }
+
+    if (diagnosticsText.includes('No write permissions for auto-updates (requires sudo)')) {
+      warnings.push('No write permissions for auto-updates (requires sudo)');
+      requiresSudo = true;
+    }
+
+    const configMismatchMatch = diagnosticsText.match(/Installation config mismatch: (.+)/);
+    if (configMismatchMatch) {
+      configMismatches.push(configMismatchMatch[1]);
+    }
+
+    return {
+      warnings,
+      configMismatches,
+      autoUpdatePermission,
+      requiresSudo
+    };
   }
 
   stop() {
@@ -454,12 +572,17 @@ Feature complete when:
 [ ] Usage logged every minute to JSONL file
 [ ] Status logged at startup and every hour to JSONL file
 [ ] All required fields captured (email, session_id, version, cwd, model)
+[ ] System diagnostics captured from /status output
+[ ] Diagnostic warnings extracted and logged
+[ ] Config mismatches extracted and logged
+[ ] Permission flags extracted (auto_update, requires_sudo)
 [ ] Logging disabled by default
 [ ] Configuration via environment variables
 [ ] Error handling prevents crashes
 [ ] JSONL format valid (parseable by jq)
 [ ] Documentation complete (README, .env.example)
-[ ] Tests passing
+[ ] Diagnostic query examples provided
+[ ] Tests passing (including diagnostic extraction tests)
 [ ] No performance impact on core functionality
 
 ================================================================================
