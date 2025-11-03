@@ -76,24 +76,31 @@ REQUIREMENTS
    - Can migrate to SQLite later if needed
    - Aligns with append-only logging pattern
    - Storage location: /data/logs/ directory (created with .gitkeep)
-   - Fallback: ~/.claude/pets/logs/ if /data/ not writable
+   - NO FALLBACK - Single location only
 
    REPOSITORY SETUP COMPLETE:
    - data/logs/.gitkeep added to git
    - .gitignore configured to ignore *.jsonl, *.log, *.db in data/logs/
    - Directory structure ready for implementation
 
-   STORAGE LOCATION (PRIMARY):
+   STORAGE LOCATION (SINGLE LOCATION):
    - /data/logs/ (created in repository, tracked with .gitkeep)
-   - Default location for all deployments
-   - Fallback: ~/.claude/pets/logs/ (if /data/logs/ not writable)
-   - Configurable via PET_LOG_DIR environment variable
+   - ONLY location for all deployments (no fallback paths)
+   - Relative path from repository root: ./data/logs/
+   - Configurable ONLY via PET_LOG_DIR environment variable (explicit override)
 
-   AUTO-DETECTION LOGIC:
+   AUTO-DETECTION LOGIC (SIMPLIFIED):
    1. Check if PET_LOG_DIR is set (use explicit path)
-   2. Try /data/logs/ (repository location, should exist)
-   3. Fallback to ~/.claude/pets/logs/ (user home directory)
-   4. Create directory if it doesn't exist
+   2. Otherwise use /data/logs/ (repository location)
+   3. Create directory if it doesn't exist
+   4. If creation fails, log error and disable logging
+
+   RATIONALE FOR SINGLE LOCATION:
+   - Predictable location (always in repository)
+   - No confusion about where logs are stored
+   - No scattered log files across filesystem
+   - Easier debugging (one place to check)
+   - Simpler implementation (no fallback logic)
 
 5. DATA STRUCTURE
    usage.jsonl line format:
@@ -189,26 +196,37 @@ Phase 2: Storage Implementation (JSONL - CONFIRMED)
 [✓] DECISION: JSONL format confirmed
 [✓] Create /data/logs/ directory structure (done - .gitkeep added)
 [✓] Configure .gitignore for log files (done - *.jsonl, *.log, *.db ignored)
-[ ] Implement directory auto-detection logic:
-    [ ] Check PET_LOG_DIR environment variable
-    [ ] Try /data/logs/ (primary location)
-    [ ] Fallback to ~/.claude/pets/logs/ (if /data/logs/ not writable)
-    [ ] Create directory if missing
-[ ] Implement JSONL append function:
+[ ] Implement directory validation logic (STRICT):
+    [ ] Check PET_LOG_DIR environment variable (explicit override)
+    [ ] Otherwise use /data/logs/ (repository location)
+    [ ] ASSERT directory exists or can be created
+    [ ] ASSERT directory is writable (test write)
+    [ ] CRASH with clear error message if assertions fail
+[ ] Implement JSONL append function (STRICT):
     [ ] Open file in append mode
     [ ] Stringify JSON object
     [ ] Append newline
-    [ ] Handle write errors
-[ ] Implement atomic writes (write to temp, then rename)
+    [ ] ASSERT write succeeded
+    [ ] CRASH on write errors (no graceful degradation)
+[ ] Implement atomic writes (write to temp, then rename):
+    [ ] Write to {filename}.tmp
+    [ ] ASSERT temp write succeeded
+    [ ] Rename to final filename
+    [ ] ASSERT rename succeeded
+    [ ] CRASH on any failure
 [ ] Add file rotation logic (optional):
     [ ] Check file size before write
     [ ] Rotate if exceeds PET_LOG_MAX_SIZE
     [ ] Keep PET_LOG_MAX_FILES files
     [ ] Delete oldest rotated file
-[ ] Handle write errors gracefully:
-    [ ] Log to stderr
-    [ ] Retry with backoff
-    [ ] Disable logging if persistent failures
+    [ ] ASSERT rotation operations succeed
+[ ] Error handling philosophy (STRICT):
+    [ ] NO retry logic
+    [ ] NO graceful degradation
+    [ ] NO fallback locations
+    [ ] CRASH immediately with detailed error message
+    [ ] Log error to stderr before crash
+    [ ] Include: path attempted, permission error, disk space, etc.
 
 Phase 3: Timing and Scheduling
 [ ] Track last usage log time
