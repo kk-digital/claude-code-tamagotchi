@@ -231,6 +231,11 @@ flowchart TB
 
 ### Setting Up AI Features
 
+**LLM Provider Options:**
+
+You can choose between two providers for AI analysis:
+
+#### Option 1: Groq (Cloud - Fast & Free)
 **Quick Setup (30 seconds!):**
 ```bash
 # 1. Get free API key from https://console.groq.com/keys
@@ -243,6 +248,7 @@ flowchart TB
 ```bash
 # Required for AI observations
 export PET_FEEDBACK_ENABLED=true
+export PET_LLM_PROVIDER=groq
 export GROQ_API_KEY="your-api-key-here"
 
 # Enable violation detection
@@ -253,6 +259,34 @@ export PET_VIOLATION_CHECK_ENABLED=true
 - ⚡ **50ms responses** - Real-time reactions without lag
 - 💰 **Extremely cheap** - Practically free for personal use
 - 🚀 **Custom chips** - Purpose-built for instant LLM inference
+
+#### Option 2: LM Studio (Local - Private & Free)
+**Setup:**
+```bash
+# 1. Install LM Studio from https://lmstudio.ai
+# 2. Load a model (recommended: openai/gpt-oss-120b or openai/gpt-oss-20b)
+# 3. Start the local server in LM Studio
+# 4. Configure environment:
+export PET_FEEDBACK_ENABLED=true
+export PET_LLM_PROVIDER=lmstudio
+export LM_STUDIO_ENABLED=true
+export LM_STUDIO_URL=http://localhost:1234/v1
+export LM_STUDIO_MODEL=openai/gpt-oss-120b
+
+# Enable violation detection
+export PET_VIOLATION_CHECK_ENABLED=true
+
+# 5. Test connection:
+./test-lmstudio.sh
+```
+
+**Why LM Studio?**
+- 🔒 **100% Private** - All analysis happens locally
+- 💸 **Completely Free** - No API costs
+- 🚀 **No Rate Limits** - Use as much as you want
+- 📡 **Offline Capable** - Works without internet
+
+**Note:** You **must** explicitly set `PET_LLM_PROVIDER` to either `groq` or `lmstudio`. There is no automatic fallback to prevent unexpected behavior or costs.
 
 ## Commands & Interaction
 
