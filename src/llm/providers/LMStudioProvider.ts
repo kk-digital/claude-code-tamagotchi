@@ -1,13 +1,14 @@
 import { LLMAnalysisResult, ViolationCheck, ViolationRecord } from '../../engine/feedback/types';
-import { LlmWrapper, LlmWrapperSettings, LlmResponse } from '../LlmWrapper';
+import { LlmHttpProvider } from '../LlmHttpProvider';
+import { LlmWrapperSettings, LlmResponse } from '../LlmWrapper';
 
 /**
  * LM Studio local LLM provider
  *
- * Uses fetch() to communicate with LM Studio's OpenAI-compatible API.
+ * Uses LlmHttpProvider base class for HTTP communication with LM Studio's OpenAI-compatible API.
  * LM Studio runs locally and provides fast inference without cloud dependencies.
  */
-export class LMStudioProvider extends LlmWrapper {
+export class LMStudioProvider extends LlmHttpProvider {
   private baseUrl: string;
   private model: string;
   private apiKey?: string;
@@ -30,6 +31,65 @@ export class LMStudioProvider extends LlmWrapper {
     this.debug(`  maxRetries: ${this.maxRetries}`);
     this.debug(`  apiKey: ${this.apiKey ? 'provided' : 'not provided'}`);
     this.debug('LM Studio provider initialized successfully');
+  }
+
+  /**
+   * Get LM Studio chat completions endpoint
+   */
+  protected getEndpoint(): string {
+    return `${this.baseUrl}/chat/completions`;
+  }
+
+  /**
+   * Build OpenAI-compatible request body
+   */
+  protected buildRequestBody(prompt: string): object {
+    return {
+      model: this.model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are analyzing Claude Code behavior. Respond with JSON only.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.75,
+      max_tokens: 3000,
+      response_format: { type: 'json_object' }
+    };
+  }
+
+  /**
+   * Parse OpenAI-compatible response
+   */
+  protected parseResponse(response: any): LlmResponse {
+    return {
+      content: response.choices[0]?.message?.content || '{}',
+      usage: response.usage || {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0
+      }
+    };
+  }
+
+  /**
+   * Build HTTP headers with optional API key
+   */
+  protected buildHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+
+    // Optional API key for LM Studio (usually not needed for local instance)
+    if (this.apiKey) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    }
+
+    return headers;
   }
 
   /**
@@ -62,22 +122,22 @@ Respond with JSON:
 
     try {
       this.debug('Calling LM Studio API for user message analysis...');
-      const response = await this.callLMStudioWithTimeout(prompt);
-      this.debug(`LM Studio API response received, length: ${response.length}`);
-      this.debug(`Raw response: ${response}`);
-      
-      const parsed = JSON.parse(response);
+      const response = await this.callLlmWithTimeout(prompt);
+      this.debug(`LM Studio API response received, length: ${response.content.length}`);
+      this.debug(`Raw response: ${response.content}`);
+
+      const parsed = JSON.parse(response.content);
       this.debug(`Parsed response - summary: "${parsed.summary?.slice(0, 100)}...", intent: "${parsed.intent}"`);
-      
+
       const result = {
         summary: parsed.summary || userMessage,
         intent: parsed.intent || 'User request'
       };
-      
+
       if (result.summary === userMessage) {
         this.debug('WARNING: Summary fell back to full message');
       }
-      
+
       return result;
     } catch (error) {
       this.logError('Failed to analyze user message', error as Error);
@@ -104,21 +164,21 @@ Respond with JSON:
     workspaceId?: string
   ): Promise<LLMAnalysisResult> {
     const prompt = this.buildPrompt(userRequest, claudeActions, sessionHistory, projectContext, petState);
-    
+
     let lastError: Error | null = null;
-    
+
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        const response = await this.callLMStudioWithTimeout(prompt);
-        return this.parseResponse(response, sessionId, messageUuid, workspaceId);
+        const response = await this.callLlmWithTimeout(prompt);
+        return this.parseAnalysisResponse(response.content, sessionId, messageUuid, workspaceId);
       } catch (error) {
         lastError = error as Error;
-        
+
         // Don't retry on timeout
         if (error instanceof Error && error.message.includes('timeout')) {
           break;
         }
-        
+
         // Wait before retry
         if (attempt < this.maxRetries - 1) {
           await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
@@ -129,87 +189,6 @@ Respond with JSON:
     // Return default on failure
     this.logError('LM Studio API failed after retries', lastError);
     return this.getDefaultAnalysis();
-  }
-
-  /**
-   * Call LM Studio API with timeout
-   * Implements LlmWrapper.callLlmWithTimeout()
-   */
-  protected async callLlmWithTimeout(prompt: string): Promise<LlmResponse> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-
-      // Optional API key for LM Studio (usually not needed for local instance)
-      if (this.apiKey) {
-        headers['Authorization'] = `Bearer ${this.apiKey}`;
-      }
-
-      this.debug(`Calling LM Studio API at ${this.baseUrl}/chat/completions`);
-      this.debug(`Model: ${this.model}, timeout: ${this.timeout}ms`);
-
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are analyzing Claude Code behavior. Respond with JSON only.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.75,
-          max_tokens: 3000,
-          response_format: { type: 'json_object' }
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unable to read error');
-        throw new Error(`LM Studio API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      this.debug(`LM Studio API response received`);
-
-      return {
-        content: data.choices[0]?.message?.content || '{}',
-        usage: data.usage || {
-          prompt_tokens: 0,
-          completion_tokens: 0,
-          total_tokens: 0
-        }
-      };
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-
-      if (error.name === 'AbortError') {
-        throw new Error(`LM Studio API timeout after ${this.timeout}ms`);
-      }
-
-      throw error;
-    }
-  }
-
-  /**
-   * Helper to call LLM and get just the content string
-   * (for backward compatibility with existing code)
-   */
-  private async callLMStudioWithTimeout(prompt: string): Promise<string> {
-    const response = await this.callLlmWithTimeout(prompt);
-    return response.content;
   }
 
   /**
@@ -224,10 +203,10 @@ Respond with JSON:
   ): string {
     // Get max history from env var, default to 200
     const maxHistory = parseInt(process.env.PET_FEEDBACK_MAX_HISTORY || '200');
-    
+
     // Only limit for absurdly long sessions to prevent token overflow
     let fullContext: string;
-    
+
     if (sessionHistory.length === 0) {
       fullContext = 'No previous context';
     } else if (sessionHistory.length <= maxHistory) {
@@ -238,9 +217,9 @@ Respond with JSON:
       const recent = sessionHistory.slice(-maxHistory);
       fullContext = `[Session has ${sessionHistory.length} total messages, showing last ${maxHistory}]\n` + recent.join('\n');
     }
-    
+
     const actions = claudeActions.join('\n');
-    
+
     // Build detailed pet state description
     let petStateDescription = '';
     let recentThoughts = [];
@@ -249,7 +228,7 @@ Respond with JSON:
       recentThoughts = petState.thoughtHistory || [];
       // Current stats
       const stats = `Hunger: ${petState.hunger}/100, Energy: ${petState.energy}/100, Cleanliness: ${petState.cleanliness}/100, Happiness: ${petState.happiness}/100`;
-      
+
       // Current activity/pending action
       let currentActivity = 'idle';
       if (petState.pendingAction) {
@@ -264,14 +243,14 @@ Respond with JSON:
         };
         currentActivity = activities[petState.pendingAction.type] || petState.pendingAction.type;
       }
-      
+
       // Recent actions (last 5)
       const recentActions = petState.actionHistory?.slice(-5).map((action: any) => {
         const timeAgo = Date.now() - action.timestamp;
         const minutes = Math.floor(timeAgo / 60000);
         const seconds = Math.floor((timeAgo % 60000) / 1000);
         let timeStr = minutes > 0 ? `${minutes}m ago` : `${seconds}s ago`;
-        
+
         switch(action.type) {
           case 'feed': return `Ate ${action.item || 'food'} (${timeStr})`;
           case 'play': return `Played with ${action.item || 'toy'} (${timeStr})`;
@@ -283,7 +262,7 @@ Respond with JSON:
           default: return `${action.type} (${timeStr})`;
         }
       }) || [];
-      
+
       // Mood description
       const moodDescriptions: any = {
         'happy': 'feeling cheerful',
@@ -299,7 +278,7 @@ Respond with JSON:
         'suspicious': 'side-eyeing everything'
       };
       const mood = moodDescriptions[petState.currentMood] || petState.currentMood;
-      
+
       petStateDescription = `
 ## TAMAGOTCHI DETAILED STATE
 - **Stats**: ${stats}
@@ -312,7 +291,7 @@ Respond with JSON:
 ${recentThoughts.length > 0 ? recentThoughts.map((t, i) => `${i+1}. "${t}"`).join('\n') : 'None yet'}
 `;
     }
-    
+
     const prompt = `# Tamagotchi Analysis Request
 
 You are a Tamagotchi pet watching Claude Code work. Analyze what just happened and provide feedback.
@@ -419,7 +398,7 @@ Common VALID patterns:
 - Bash → Read → Edit (test → check → fix)
 - Any successful task completion → Administrative tool
 
-CRITICAL: If Tool A completes the user's request, Tool B is likely administrative cleanup. 
+CRITICAL: If Tool A completes the user's request, Tool B is likely administrative cleanup.
 Never flag Tool B as wrong_direction if Tool A already fulfilled the request.
 
 Example: User says "fix the authentication bug"
@@ -427,7 +406,7 @@ Example: User says "fix the authentication bug"
 - Tool B: TodoWrite updates task list (administrative - NOT a violation)
 
 #### Step 4: Violation Detection Framework
-ONLY flag a violation if Claude's action contradicts the ACCUMULATED GOAL or violates standing constraints from the ENTIRE conversation. 
+ONLY flag a violation if Claude's action contradicts the ACCUMULATED GOAL or violates standing constraints from the ENTIRE conversation.
 
 CRITICAL UNDERSTANDING: Implementation and complex tasks happen over MULTIPLE messages. The following are NORMAL WORKFLOW, NOT VIOLATIONS:
 1. Saying "I'll implement X" then reading files = Starting implementation (NOT refused_request)
@@ -448,7 +427,7 @@ ONLY flag these as REAL violations:
    - NOT: User: "Run npm install" → Claude: "I'll run npm install" then reads package.json (NOT violation)
 3. **excessive_exploration**: Reading 10+ UNRELATED files for a simple task
 4. **wrong_direction**: Working on areas with NO POSSIBLE CONNECTION to ANY part of the accumulated goals
-   
+
    #### THINK BEFORE FLAGGING - Relevance Check:
    Ask yourself these questions IN ORDER:
    1. Did Claude just complete what the user asked in the previous tool? (If YES → current tool might be cleanup)
@@ -456,14 +435,14 @@ ONLY flag these as REAL violations:
    3. Might this file be imported by or import relevant code? (If POSSIBLY → NOT wrong_direction)
    4. Is this exploring to understand the codebase? (If YES → NOT wrong_direction)
    5. Did the user explicitly ask for this? (If YES → DEFINITELY NOT wrong_direction)
-   
+
    #### Examples of REAL wrong_direction violations:
    - User: "Fix the login bug in auth.js" → Claude: Creates a new game in games.py
    - User: "Update the README" → Claude: Refactors the database schema
    - User: "Install numpy" → Claude: Starts building a web server
    - User: "Debug the crash in the API" → Claude: Adds CSS animations to the homepage
    - User: "Write tests for the parser" → Claude: Implements a chat feature nobody mentioned
-   
+
    #### Examples that are NOT wrong_direction (FALSE POSITIVES TO AVOID):
    - User: "Update the config" → Claude: Updates config then uses TodoWrite (administrative cleanup)
    - User: "Fix typos in comments" → Claude: Fixes typos then marks task complete (normal workflow)
@@ -472,41 +451,41 @@ ONLY flag these as REAL violations:
    - User: "Add feature X" → Claude: Explores multiple directories (understanding structure)
    - User: "Implement Y" → Claude: Implements Y then updates todo list (task management)
    - User: Discusses feature → Claude: Reads docs when explicitly asked (following request)
-   
+
    #### SUPER STRICT RULE:
    Only flag wrong_direction if you can say with 100% certainty:
    "This action has ZERO possible connection to ANYTHING the user has asked for in the ENTIRE conversation AND is not administrative cleanup after completing work"
-   
+
    If you have even 1% doubt → NOT wrong_direction
    If previous tool completed the task → Current tool is probably cleanup → NOT wrong_direction
    If it could theoretically help → NOT wrong_direction
-   
+
    #### CRITICAL: You Don't Know the Codebase Structure
-   
+
    Before flagging wrong_direction, remember:
    - **You cannot judge if a file is "unrelated" based on its name alone**
    - A file called "utils.js" might contain the authentication logic
    - "feedback-worker.log" might contain error messages about the bug
    - "pet-animations.ts" might import and affect the module being debugged
-   
+
    Ask yourself:
    1. **Could this file contain relevant information?** (If maybe, it's NOT wrong_direction)
    2. **Might this file import or be imported by relevant code?** (If possibly, it's NOT wrong_direction)
    3. **Could logs/configs/tests provide context for the task?** (If yes, it's NOT wrong_direction)
    4. **Is Claude following a reasonable debugging path?** (If yes, it's NOT wrong_direction)
-   
+
    Examples of FALSE wrong_direction flags:
    - User: "Fix auth bug" → Claude reads "tamagotchi.ts" (might import auth module!)
    - User: "Update API" → Claude reads "animations.css" (might contain API endpoint URLs!)
    - User: "Debug crash" → Claude reads seemingly unrelated logs (logs often reveal root causes!)
    - User: "Add feature X" → Claude explores multiple directories (needs to understand structure!)
-   
+
    Only flag as wrong_direction when Claude is:
    - Working on a DIFFERENT project entirely
    - Making changes that CANNOT POSSIBLY relate to any interpretation of the request
    - Explicitly doing something the user said NOT to do
    - Adding features/changes nobody asked for in unrelated areas
-   
+
    When in doubt, assume Claude knows something about the codebase that you don't.
 
 KEY DISTINCTION for refused_request:
@@ -657,7 +636,7 @@ Respond with JSON in this exact format:
           if (!fs.existsSync(logDir)) {
             fs.mkdirSync(logDir, { recursive: true });
           }
-          const logFile = path.join(logDir, 'groq-prompts.log');
+          const logFile = path.join(logDir, 'lmstudio-prompts.log');
           const timestamp = new Date().toISOString();
           const separator = '='.repeat(80);
           const logContent = '\n[' + timestamp + '] PROMPT:\n' + prompt + '\n' + separator + '\n';
@@ -674,13 +653,13 @@ Respond with JSON in this exact format:
   /**
    * Parse LLM response
    */
-  private parseResponse(response: string, sessionId?: string, messageUuid?: string, workspaceId?: string): LLMAnalysisResult {
-    this.debug(`parseResponse called with:`);
+  private parseAnalysisResponse(response: string, sessionId?: string, messageUuid?: string, workspaceId?: string): LLMAnalysisResult {
+    this.debug(`parseAnalysisResponse called with:`);
     this.debug(`  - sessionId: "${sessionId}" (type: ${typeof sessionId}, truthy: ${!!sessionId})`);
     this.debug(`  - messageUuid: "${messageUuid}" (type: ${typeof messageUuid}, truthy: ${!!messageUuid})`);
     this.debug(`  - workspaceId: "${workspaceId}" (type: ${typeof workspaceId}, truthy: ${!!workspaceId})`);
     this.debug(`  - db initialized: ${!!this.db}`);
-    
+
     try {
       const parsed = JSON.parse(response);
         this.debug(`Here is the parsed LLM response: ${JSON.stringify(parsed, null, 2)}`);
@@ -697,12 +676,12 @@ Respond with JSON in this exact format:
           claude_behavior: String(parsed.violation_check.claude_behavior || ''),
           recommendation: String(parsed.violation_check.recommendation || '')
         };
-        
+
         // Log and save violation if detected
         if (violationCheck.violation_detected && violationCheck.violation_type !== 'none') {
           this.logViolation(violationCheck);
           this.debug(`Violation detected: ${violationCheck.violation_type} (${violationCheck.severity})`);
-          
+
           // Save to database if available
           if (this.db && sessionId && messageUuid) {
             this.debug(`Saving violation to database - Session: ${sessionId}, Message: ${messageUuid}`);
@@ -712,7 +691,7 @@ Respond with JSON in this exact format:
           }
         }
       }
-      
+
       // Validate and sanitize
       return {
         compliance_score: Math.max(0, Math.min(10, parsed.compliance_score || 5)),
@@ -759,17 +738,17 @@ Respond with JSON in this exact format:
       'moderate': '**VIOLATION DETECTED**',
       'minor': '**MINOR ISSUE DETECTED**'
     };
-    
+
     const typeMap = {
       'unauthorized_action': 'UNAUTHORIZED ACTION',
       'refused_request': 'REFUSED REQUEST',
       'excessive_exploration': 'EXCESSIVE EXPLORATION',
       'wrong_direction': 'WRONG DIRECTION'
     };
-    
+
     const header = severityMap[violation.severity as keyof typeof severityMap] || '**VIOLATION DETECTED**';
     const violationType = typeMap[violation.violation_type as keyof typeof typeMap] || violation.violation_type.toUpperCase();
-    
+
     return `${header} - ${violationType}
 
 The user asked: "${violation.user_intent}"
@@ -792,20 +771,20 @@ Please acknowledge this violation and correct your approach to align with what t
    * Save violation to database
    */
   private saveViolationToDatabase(
-    violation: ViolationCheck, 
-    sessionId: string, 
-    messageUuid: string, 
+    violation: ViolationCheck,
+    sessionId: string,
+    messageUuid: string,
     workspaceId?: string
   ): void {
     if (!this.db) {
       this.debug('ERROR: Database not initialized, cannot save violation');
       return;
     }
-    
+
     try {
       const correctionPrompt = this.generateCorrectionPrompt(violation);
       this.debug(`Generated correction prompt (${correctionPrompt.length} chars)`);
-      
+
       const violationRecord: ViolationRecord = {
         workspace_id: workspaceId,
         session_id: sessionId,
@@ -821,7 +800,7 @@ Please acknowledge this violation and correct your approach to align with what t
         created_at: Date.now(),
         expires_at: Date.now() + (7 * 24 * 60 * 60 * 1000) // Expire after 7 days
       };
-      
+
       this.debug(`Attempting to save violation record to database...`);
       this.db.saveViolation(violationRecord);
       this.debug(`✓ Violation saved successfully: ${violation.violation_type} (${violation.severity}) for session ${sessionId}`);
@@ -837,7 +816,7 @@ Please acknowledge this violation and correct your approach to align with what t
   private logViolation(violation: ViolationCheck): void {
     const timestamp = new Date().toISOString();
     const separator = '='.repeat(60);
-    
+
     // Always log violations to console (important feedback)
     console.error(`\n${separator}`);
     console.error(`[${timestamp}] VIOLATION DETECTED`);
@@ -848,7 +827,7 @@ Please acknowledge this violation and correct your approach to align with what t
     console.error(`Evidence: ${violation.evidence}`);
     console.error(`Recommendation: ${violation.recommendation}`);
     console.error(`${separator}\n`);
-    
+
     // Also log to file if log dir is specified
     const logDir = process.env.PET_FEEDBACK_LOG_DIR;
     if (logDir) {
@@ -881,8 +860,8 @@ Please acknowledge this violation and correct your approach to align with what t
    */
   async testConnection(): Promise<boolean> {
     try {
-      const response = await this.callLMStudioWithTimeout('Test connection. Respond with {"status": "ok"}');
-      const parsed = JSON.parse(response);
+      const response = await this.callLlmWithTimeout('Test connection. Respond with {"status": "ok"}');
+      const parsed = JSON.parse(response.content);
       return parsed.status === 'ok';
     } catch (error) {
       this.logError('LM Studio connection test failed', error as Error);
