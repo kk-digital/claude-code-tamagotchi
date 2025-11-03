@@ -336,27 +336,66 @@ else
     fail "Response time test failed" "Response: $PERF_RESPONSE"
 fi
 
-# Test 10: Tamagotchi application test
+# Test 10: Runtime requirements
+print_header "RUNTIME REQUIREMENTS TESTS"
+
+TESTS_TOTAL=$((TESTS_TOTAL + 1))
+print_test "Check bun runtime is available"
+if command -v bun > /dev/null 2>&1; then
+    BUN_VERSION=$(bun --version)
+    pass
+    echo "   Bun version: $BUN_VERSION"
+else
+    fail "Bun runtime not found in PATH" "Install bun from https://bun.sh or run tests inside Docker container. Current PATH: $PATH"
+fi
+
+TESTS_TOTAL=$((TESTS_TOTAL + 1))
+print_test "Check node_modules directory exists"
+if [ -d "node_modules" ]; then
+    pass
+    PACKAGE_COUNT=$(find node_modules -maxdepth 1 -type d | wc -l)
+    echo "   Packages installed: $PACKAGE_COUNT"
+else
+    fail "node_modules directory not found" "Run: bun install"
+fi
+
+TESTS_TOTAL=$((TESTS_TOTAL + 1))
+print_test "Check jq is available (for JSON parsing)"
+if command -v jq > /dev/null 2>&1; then
+    pass
+else
+    warn "jq not found (optional - used for better test output)"
+fi
+
+# Test 11: Tamagotchi application test
 print_header "APPLICATION INTEGRATION TESTS"
 
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 print_test "Check TypeScript compiles"
-if bun build src/index.ts --outdir /tmp/test-build > /dev/null 2>&1; then
-    pass
-    rm -rf /tmp/test-build
+if command -v bun > /dev/null 2>&1; then
+    if bun build src/index.ts --outdir /tmp/test-build > /dev/null 2>&1; then
+        pass
+        rm -rf /tmp/test-build
+    else
+        fail "TypeScript compilation failed" "Run: bun build src/index.ts to see errors"
+    fi
 else
-    fail "TypeScript compilation failed" "Run: bun build src/index.ts to see errors"
+    warn "Skipping TypeScript compilation test (bun not available)"
 fi
 
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 print_test "Check application runs (smoke test)"
-TIMEOUT=5
-APP_OUTPUT=$(timeout $TIMEOUT bun run src/index.ts 2>&1 || true)
-if echo "$APP_OUTPUT" | grep -q "◕"; then
-    pass
-    echo "   Application started successfully"
+if command -v bun > /dev/null 2>&1; then
+    TIMEOUT=5
+    APP_OUTPUT=$(timeout $TIMEOUT bun run src/index.ts 2>&1 || true)
+    if echo "$APP_OUTPUT" | grep -q "◕"; then
+        pass
+        echo "   Application started successfully"
+    else
+        fail "Application did not start correctly" "Output: $APP_OUTPUT"
+    fi
 else
-    fail "Application did not start correctly" "Output: $APP_OUTPUT"
+    warn "Skipping application smoke test (bun not available)"
 fi
 
 # Final summary
