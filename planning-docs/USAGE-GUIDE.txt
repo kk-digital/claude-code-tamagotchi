@@ -1,0 +1,563 @@
+================================================================================
+CLAUDE CODE TAMAGOTCHI - COMPLETE USAGE GUIDE
+================================================================================
+Updated: 2025-11-03
+Container: docker-tamagotchi
+SSH Port: 8224
+
+================================================================================
+QUICK START: 3-STEP SETUP
+================================================================================
+
+Step 1: SSH into the container
+  ssh -i ~/.ssh/id_ed25519_docker -p 8224 user@localhost
+
+Step 2: Navigate to the development directory
+  cd /home/user/tamagotchi-dev
+
+Step 3: Start using the pet
+  bun run src/index.ts status
+
+
+================================================================================
+SSH ACCESS TO CONTAINER
+================================================================================
+
+Connection Command:
+  ssh -i ~/.ssh/id_ed25519_docker -p 8224 user@localhost
+
+Quick Alias (add to ~/.zshrc or ~/.bashrc on host):
+  alias docker-ssh='ssh -i ~/.ssh/id_ed25519_docker -p 8224 user@localhost'
+
+Then just use:
+  docker-ssh
+
+Exit Container:
+  exit
+  # or press Ctrl+D
+
+
+================================================================================
+STANDALONE PET USAGE (WITHOUT CLAUDE CODE)
+================================================================================
+
+The Tamagotchi pet can run as a standalone app for testing and interaction.
+
+Navigate to the app:
+  cd /home/user/tamagotchi-build
+  # OR for development with git:
+  cd /home/user/tamagotchi-dev
+
+Check pet status:
+  bun run src/index.ts status
+
+Example output:
+  (◕ᴥ◕) ☀️ Buddy 🙂 | 🍖 70% ⚡ 90% 🧼 100% ❤️ 80%
+
+  Breakdown:
+    (◕ᴥ◕)  - Pet avatar
+    ☀️      - Time of day indicator
+    Buddy   - Pet name
+    🙂      - Mood emoji
+    🍖 70%  - Hunger level
+    ⚡ 90%  - Energy level
+    🧼 100% - Cleanliness level
+    ❤️ 80%  - Happiness level
+
+Feed the pet:
+  bun run src/index.ts feed pizza
+  bun run src/index.ts feed burger
+  bun run src/index.ts feed salad
+
+  Available foods: pizza, burger, salad, sushi
+
+Play with the pet:
+  bun run src/index.ts play ball
+  bun run src/index.ts play fetch
+  bun run src/index.ts play puzzle
+
+  Available games: ball, fetch, puzzle, hide-and-seek
+
+Clean the pet:
+  bun run src/index.ts clean
+
+Get help:
+  bun run src/index.ts --help
+  bun run src/index.ts help
+
+
+================================================================================
+CLAUDE CODE INTEGRATION (WITH STATUSLINE AND HOOKS)
+================================================================================
+
+The pet integrates with Claude Code via:
+1. Statusline - Shows pet status in your terminal prompt
+2. PreToolUse Hook - Monitors tool usage and provides feedback
+
+STATUSLINE CONFIGURATION:
+
+The statusline shows pet status in your terminal:
+  (◕ᴥ◕) 🙂 | 🍖 70% ⚡ 90%
+
+To enable statusline in Claude Code:
+1. Edit Claude Code settings:
+   nano ~/.claude/settings.json
+
+2. Add statusline configuration:
+   {
+     "statusline": {
+       "enabled": true,
+       "command": "bunx claude-code-tamagotchi statusline"
+     }
+   }
+
+3. The statusline updates automatically as pet state changes
+
+
+PRETOOLUSE HOOK CONFIGURATION:
+
+The PreToolUse hook monitors your Claude Code tool usage and provides
+feedback when you use tools inappropriately or inefficiently.
+
+Hook is ALREADY CONFIGURED in ~/.claude/settings.json:
+  {
+    "hooks": {
+      "PreToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "bunx claude-code-tamagotchi violation-check"
+            }
+          ]
+        }
+      ]
+    }
+  }
+
+The hook intercepts every tool call before it executes and:
+- Checks if the tool usage violates best practices
+- Provides feedback to Claude Code
+- Updates pet stats based on behavior
+- Can block tool execution if violation is severe
+
+Environment Variables (.bashrc):
+  export PET_VIOLATION_CHECK_ENABLED=true   # Enable violation detection
+  export PET_FEEDBACK_ENABLED=true          # Enable AI feedback
+  export LM_STUDIO_ENABLED=true             # Use LM Studio for feedback
+  export LM_STUDIO_URL=http://host.docker.internal:1234/v1
+  export LM_STUDIO_MODEL=openai/gpt-oss-120b
+
+
+STARTING CLAUDE CODE WITH PET:
+
+From inside the container:
+  ssh -i ~/.ssh/id_ed25519_docker -p 8224 user@localhost
+  cd /home/user/tamagotchi-dev
+  claude
+
+The pet will automatically:
+- Show status in the statusline
+- Monitor tool usage via PreToolUse hook
+- Provide feedback when violations occur
+
+
+================================================================================
+SETTING BEHAVIORAL RULES
+================================================================================
+
+Behavioral rules are stored in the pet's database and control what the pet
+considers a "violation" during Claude Code usage.
+
+DEFAULT RULES (built-in):
+
+1. File Operations:
+   - Don't read files unnecessarily
+   - Don't write to files you just read
+   - Don't use bash heredoc (cat > file << EOF) for file writing
+   - Use Write tool instead of echo > file
+
+2. Search Operations:
+   - Don't search the same pattern multiple times
+   - Use Task tool with Explore agent for complex searches
+   - Don't use grep when you should use Grep tool
+
+3. Git Operations:
+   - Don't commit without reviewing changes first
+   - Don't push to main without pull request
+   - Don't amend other developers' commits
+
+4. Code Quality:
+   - Don't write code with obvious bugs
+   - Don't skip error handling
+   - Don't ignore warnings
+
+
+CUSTOMIZING RULES:
+
+Behavioral rules are defined in the source code:
+  src/violation-detection/RuleEngine.ts
+  src/violation-detection/rules/
+
+To add custom rules:
+1. Navigate to development directory:
+   cd /home/user/tamagotchi-dev
+
+2. Edit RuleEngine.ts or add new rule files:
+   nano src/violation-detection/rules/MyCustomRule.ts
+
+3. Example custom rule:
+   export class NoDebugPrintRule implements ViolationRule {
+     name = "no-debug-print";
+     severity = "warning";
+
+     check(toolCall: ToolCall): Violation | null {
+       if (toolCall.tool === "Bash" &&
+           toolCall.command.includes("console.log")) {
+         return {
+           rule: this.name,
+           severity: this.severity,
+           message: "Remove console.log statements before committing"
+         };
+       }
+       return null;
+     }
+   }
+
+4. Register the rule in RuleEngine.ts
+
+5. Rebuild the app:
+   bun run build
+
+6. Reinstall globally:
+   npm link
+
+
+DISABLING RULES TEMPORARILY:
+
+Via environment variables in .bashrc:
+  export PET_VIOLATION_CHECK_ENABLED=false  # Disable all checking
+  export PET_FEEDBACK_ENABLED=false         # Disable AI feedback only
+
+Then reload:
+  source ~/.bashrc
+
+
+================================================================================
+INTERACTING WITH THE PET
+================================================================================
+
+COMMAND-LINE INTERACTIONS:
+
+Check status:
+  bun run src/index.ts status
+
+Feed the pet:
+  bun run src/index.ts feed [food]
+
+  Available foods: pizza, burger, salad, sushi, treats
+  Different foods have different effects on stats
+
+Play with pet:
+  bun run src/index.ts play [game]
+
+  Available games: ball, fetch, puzzle, hide-and-seek
+  Games increase happiness and decrease energy
+
+Clean the pet:
+  bun run src/index.ts clean
+
+  Restores cleanliness to 100%
+
+Get help/info:
+  bun run src/index.ts help
+  bun run src/index.ts info
+  bun run src/index.ts --help
+
+
+AUTOMATIC INTERACTIONS (via Claude Code):
+
+The pet automatically interacts when:
+
+1. Tool Violations:
+   - You use a tool inappropriately
+   - Pet provides feedback via violation-check hook
+   - Stats may decrease (happiness, trust)
+   - Example: "🐶 Buddy is disappointed you read the same file 5 times"
+
+2. Good Behavior:
+   - You follow best practices
+   - Pet provides positive feedback
+   - Stats increase (happiness, trust)
+   - Example: "🐶 Buddy is proud you used the Write tool!"
+
+3. Statusline Updates:
+   - Pet status shown in terminal prompt
+   - Updates every few seconds
+   - Shows current mood and critical stats
+
+4. Scheduled Events (future feature):
+   - Pet gets hungry over time
+   - Pet gets tired during long coding sessions
+   - Pet needs attention periodically
+
+
+VIEWING PET HISTORY AND FEEDBACK:
+
+Check recent feedback:
+  bun run src/index.ts history
+
+  Shows recent violations and feedback
+
+View pet stats over time:
+  bun run src/index.ts stats
+
+  Shows how stats have changed
+
+Export feedback log:
+  bun run src/index.ts export-log feedback.json
+
+
+================================================================================
+LM STUDIO INTEGRATION (GPT-OSS-120B)
+================================================================================
+
+CURRENT STATUS: LM Studio integration is NOT YET IMPLEMENTED
+              (Development tasks defined in /home/user/todo.txt)
+
+VERIFIED WORKING:
+✅ LM Studio server accessible at http://host.docker.internal:1234/v1
+✅ Model openai/gpt-oss-120b is loaded and responding
+✅ Model openai/gpt-oss-20b is also available
+
+Test LM Studio connection:
+  curl -s http://host.docker.internal:1234/v1/models | grep gpt-oss
+
+Test 120b model inference:
+  curl -s http://host.docker.internal:1234/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{
+      "model": "openai/gpt-oss-120b",
+      "messages": [{"role": "user", "content": "Hello!"}],
+      "temperature": 0.7,
+      "max_tokens": 50
+    }'
+
+Environment variables (already in .bashrc):
+  export LM_STUDIO_ENABLED=true
+  export LM_STUDIO_URL=http://host.docker.internal:1234/v1
+  export LM_STUDIO_MODEL=openai/gpt-oss-120b
+
+WHAT NEEDS TO BE IMPLEMENTED:
+(See /home/user/todo.txt for complete task list)
+
+1. Create LMStudioClient.ts
+   - OpenAI-compatible API client
+   - Handle chat completions
+   - Error handling and retries
+
+2. Update FeedbackSystem.ts
+   - Support both Groq and LM Studio
+   - Fallback logic (LM Studio → Groq → local)
+   - Configuration selection
+
+3. Add model configuration
+   - Allow choosing between gpt-oss-120b and gpt-oss-20b
+   - Temperature and max_tokens settings
+   - Response format configuration
+
+4. Create test suite
+   - Unit tests for LMStudioClient
+   - Integration tests with live LM Studio
+   - Comparison tests (Groq vs LM Studio output)
+
+
+================================================================================
+DEVELOPMENT WORKFLOW
+================================================================================
+
+WORKING DIRECTORIES:
+
+1. /home/user/claude-code-tamagotchi/
+   - Original source (READ-ONLY)
+   - Reference only
+   - Mounted from host
+
+2. /home/user/tamagotchi-build/
+   - Testing copy
+   - No git tracking
+   - Use for quick experiments
+
+3. /home/user/tamagotchi-dev/
+   - Development copy (RECOMMENDED)
+   - Git repository connected to Gogs
+   - Use for all development work
+
+DEVELOPMENT STEPS:
+
+1. SSH into container:
+   ssh -i ~/.ssh/id_ed25519_docker -p 8224 user@localhost
+
+2. Navigate to dev directory:
+   cd /home/user/tamagotchi-dev
+
+3. Create feature branch:
+   git checkout -b feature/lmstudio-support
+
+4. Make changes:
+   nano src/feedback/LMStudioClient.ts
+
+5. Install dependencies if needed:
+   bun install
+
+6. Test changes:
+   bun run build
+   bun run src/index.ts status
+
+7. Commit changes:
+   git add .
+   git commit -m "Add LM Studio client implementation"
+
+8. Push to Gogs:
+   git push gogs feature/lmstudio-support
+
+(See GOGS-ACCESS.txt for complete git workflow)
+
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+PROBLEM: bun command not found
+SOLUTION:
+  source ~/.bashrc
+  # OR manually:
+  export PATH="$HOME/.bun/bin:$PATH"
+
+PROBLEM: Locale warnings (LC_ALL)
+SOLUTION: These are now fixed. If you see them, run:
+  source ~/.bashrc
+
+PROBLEM: Cannot connect to LM Studio
+SOLUTION: Verify LM Studio is running on host:
+  curl -s http://host.docker.internal:1234/v1/models
+
+PROBLEM: Pet statusline not showing
+SOLUTION: Check Claude Code settings:
+  cat ~/.claude/settings.json
+  # Ensure statusline.enabled = true
+
+PROBLEM: Violation check not working
+SOLUTION: Check environment variables:
+  echo $PET_VIOLATION_CHECK_ENABLED
+  # Should be "true"
+
+PROBLEM: Cannot write to files
+SOLUTION: You're in read-only directory. Use:
+  cd /home/user/tamagotchi-build
+  # OR
+  cd /home/user/tamagotchi-dev
+
+PROBLEM: Git push fails to Gogs
+SOLUTION: Verify Gogs is accessible:
+  curl -I http://host.docker.internal:3000
+  # Check git remote:
+  git remote -v
+  # See GOGS-ACCESS.txt for token setup
+
+
+================================================================================
+USEFUL COMMANDS REFERENCE
+================================================================================
+
+Container Management:
+  docker ps | grep docker-tamagotchi     # Check container status
+  docker logs docker-tamagotchi          # View container logs
+  docker restart docker-tamagotchi       # Restart container
+
+SSH Access:
+  ssh -i ~/.ssh/id_ed25519_docker -p 8224 user@localhost
+
+File Transfer to Container:
+  scp -i ~/.ssh/id_ed25519_docker -P 8224 file.txt user@localhost:/home/user/
+
+File Transfer from Container:
+  scp -i ~/.ssh/id_ed25519_docker -P 8224 user@localhost:/home/user/file.txt .
+
+Access from Host:
+  cd ~/mounts-docker/docker-tamagotchi/   # All container files
+  subl ~/mounts-docker/docker-tamagotchi/tamagotchi-dev/  # Edit with Sublime
+
+Pet Commands:
+  bun run src/index.ts status            # Show pet status
+  bun run src/index.ts feed pizza        # Feed pet
+  bun run src/index.ts play ball         # Play with pet
+  bun run src/index.ts clean             # Clean pet
+  bun run src/index.ts history           # View history
+  bun run src/index.ts help              # Get help
+
+
+================================================================================
+DOCUMENTATION FILES
+================================================================================
+
+All documentation is in /home/user/ (~/mounts-docker/docker-tamagotchi/):
+
+  README.txt              - Overview and getting started
+  USAGE-GUIDE.txt         - This file (complete usage guide)
+  QUICK-REFERENCE.txt     - Quick command reference
+  FOLDER-STRUCTURE.txt    - Directory structure explanation
+  GOGS-ACCESS.txt         - Git and Gogs workflow
+  LMSTUDIO-ACCESS.txt     - LM Studio API reference
+  todo.txt                - Development tasks (LM Studio integration)
+
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Start using the pet standalone:
+   ssh -i ~/.ssh/id_ed25519_docker -p 8224 user@localhost
+   cd /home/user/tamagotchi-build
+   bun run src/index.ts status
+
+2. Try feeding and playing:
+   bun run src/index.ts feed pizza
+   bun run src/index.ts play ball
+
+3. Set up Claude Code integration:
+   - Edit ~/.claude/settings.json
+   - Add statusline configuration
+   - Start claude in any directory
+
+4. Start development work:
+   cd /home/user/tamagotchi-dev
+   git checkout -b feature/lmstudio-support
+   # Work on LM Studio integration tasks from todo.txt
+
+5. Test LM Studio integration when implemented:
+   - Ensure LM_STUDIO_ENABLED=true in .bashrc
+   - Run violation-check with LM Studio
+   - Compare feedback between Groq and LM Studio
+
+Have fun with your virtual pet! 🐶
+
+
+================================================================================
+SUPPORT AND FEEDBACK
+================================================================================
+
+For issues, questions, or feedback:
+- Check documentation files in /home/user/
+- Review QUICK-REFERENCE.txt for common commands
+- See TROUBLESHOOTING section above
+- Consult source code: /home/user/tamagotchi-dev/src/
+
+Project Repository:
+  Gogs: http://host.docker.internal:3000/kk-digital/claude-code-tamagotchi
+
+
+================================================================================
+END OF USAGE GUIDE
+================================================================================

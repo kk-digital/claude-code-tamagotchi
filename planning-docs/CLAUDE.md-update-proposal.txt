@@ -1,0 +1,302 @@
+================================================================================
+CLAUDE.md UPDATE PROPOSAL - LM STUDIO INTEGRATION
+================================================================================
+
+This document proposes updates to /home/user/tamagotchi-dev/CLAUDE.md
+to document the LlmWrapper architecture and LM Studio integration.
+
+================================================================================
+SECTION TO ADD: LLM PROVIDER ABSTRACTION
+================================================================================
+
+Add this section after "## Architecture Overview" and before "### Core Components":
+
+---
+
+### LLM Provider Abstraction (LlmWrapper)
+
+**Purpose**: Unified interface for multiple LLM providers (Groq, LM Studio, OpenAI)
+
+**Architecture**:
+- `src/llm/LlmWrapper.ts`: Abstract base class defining common interface
+- `src/llm/LlmWrapperSettings.ts`: Configuration types for all providers
+- `src/llm/LlmWrapperFactory.ts`: Factory pattern for provider instantiation
+- `src/llm/providers/`:
+  - `GroqProvider.ts`: Original Groq cloud API provider
+  - `LMStudioProvider.ts`: Local LM Studio OpenAI-compatible provider
+  - `OpenAIProvider.ts` (future): Native OpenAI API support
+
+**Key Methods**:
+- `analyzeUserMessage(message, history)`: Summarize and extract intent from messages
+- `analyzeExchange(request, actions, history, context)`: Analyze Claude's behavior
+- `callLlmWithTimeout(prompt)`: Protected method for actual API calls
+
+**Provider Selection**:
+The system automatically selects the appropriate provider based on configuration:
+1. **Auto mode** (default): Tries LM Studio → Groq → Offline fallback
+2. **Explicit mode**: Use specific provider (groq, lmstudio)
+3. **Offline fallback**: Works without any LLM when APIs unavailable
+
+**Benefits**:
+- Support both cloud (Groq) and local (LM Studio) LLMs
+- Privacy: LM Studio runs locally with no cloud dependency
+- Cost: Local inference avoids API charges
+- Reliability: Automatic failover between providers
+- Extensibility: Easy to add new providers (OpenAI, Anthropic, etc.)
+
+---
+
+================================================================================
+SECTION TO UPDATE: Key Environment Variables
+================================================================================
+
+Replace the "AI Feedback System (Optional):" section with:
+
+---
+
+**AI Feedback System Configuration:**
+
+*LLM Provider Selection:*
+- `LLM_PROVIDER`: Which provider to use ('auto' | 'groq' | 'lmstudio')
+  - Default: 'auto' (tries LM Studio → Groq → offline)
+
+*Groq Provider (Cloud):*
+- `PET_GROQ_API_KEY` or `GROQ_API_KEY`: Groq API key from https://console.groq.com/keys
+- `PET_GROQ_MODEL`: Model to use (default: openai/gpt-oss-20b)
+- `PET_GROQ_TIMEOUT`: API timeout in ms (default: 2000)
+- `PET_GROQ_MAX_RETRIES`: Number of retry attempts (default: 2)
+
+*LM Studio Provider (Local):*
+- `LM_STUDIO_ENABLED`: Enable LM Studio provider (true/false)
+- `LM_STUDIO_URL`: API endpoint (default: http://host.docker.internal:1234/v1)
+- `LM_STUDIO_MODEL`: Model to use (default: openai/gpt-oss-120b)
+- `LM_STUDIO_API_KEY`: Optional API key (not required for local LM Studio)
+- `LM_STUDIO_TIMEOUT`: API timeout in ms (default: 5000)
+- `LM_STUDIO_MAX_RETRIES`: Number of retry attempts (default: 1)
+
+*General Feedback Settings:*
+- `PET_FEEDBACK_ENABLED`: Enable AI-powered observations (true/false)
+- `PET_FEEDBACK_CHECK_INTERVAL`: Updates between feedback checks (default: 5)
+- `PET_FEEDBACK_DEBUG`: Enable debug logging (true/false)
+- `PET_FEEDBACK_LOG_DIR`: Directory for debug logs
+
+---
+
+================================================================================
+NEW SECTION TO ADD: LM Studio Integration
+================================================================================
+
+Add this section after "## New Features (Latest Commit)":
+
+---
+
+## LM Studio Integration
+
+### What is LM Studio?
+
+LM Studio (https://lmstudio.ai/) is a desktop application for running large language models locally on your machine. It provides an OpenAI-compatible API server, allowing the Tamagotchi to use local LLMs instead of cloud APIs.
+
+### Why Use LM Studio?
+
+**Privacy**: All inference happens locally - no data sent to cloud services
+**Cost**: No API charges for inference
+**Offline**: Works without internet connection
+**Control**: Full control over model selection and parameters
+**Speed**: Can be faster than cloud APIs depending on hardware
+
+### Setup Instructions
+
+**1. Install LM Studio**
+- Download from https://lmstudio.ai/
+- Install on your host machine (macOS, Windows, Linux)
+
+**2. Load a Model**
+- Open LM Studio
+- Download a compatible model:
+  - Recommended: openai/gpt-oss-120b (best quality, slower)
+  - Alternative: openai/gpt-oss-20b (faster, good quality)
+  - Alternative: llama-3.1-8b-instant (fastest)
+
+**3. Start the API Server**
+- Click "Local Server" tab in LM Studio
+- Click "Start Server" (default port: 1234)
+- Verify server is running (green indicator)
+
+**4. Configure Tamagotchi**
+
+If running in Docker:
+```bash
+# Add to ~/.bashrc inside container
+export LM_STUDIO_ENABLED=true
+export LM_STUDIO_URL=http://host.docker.internal:1234/v1
+export LM_STUDIO_MODEL=openai/gpt-oss-120b
+
+# Reload environment
+source ~/.bashrc
+```
+
+If running natively:
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export LM_STUDIO_ENABLED=true
+export LM_STUDIO_URL=http://localhost:1234/v1
+export LM_STUDIO_MODEL=openai/gpt-oss-120b
+```
+
+**5. Test Connectivity**
+
+```bash
+# Test LM Studio is accessible
+curl -s http://localhost:1234/v1/models | jq .
+
+# Test inference
+curl -s http://localhost:1234/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-oss-120b",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "temperature": 0.7,
+    "max_tokens": 50
+  }' | jq -r '.choices[0].message.content'
+```
+
+**6. Verify Tamagotchi Uses LM Studio**
+
+```bash
+# Enable debug logging
+export PET_FEEDBACK_DEBUG=true
+export PET_FEEDBACK_LOG_DIR=~/tamagotchi-logs
+
+# Run the pet
+bun run src/index.ts status
+
+# Check logs to see which provider was used
+cat ~/tamagotchi-logs/groq-client.log
+# Should show: "Using LM Studio provider"
+```
+
+### Provider Fallback
+
+The system automatically falls back between providers:
+
+1. **Auto mode** (`LLM_PROVIDER=auto`):
+   - If `LM_STUDIO_ENABLED=true` and LM Studio accessible → Use LM Studio
+   - If LM Studio fails or unavailable → Try Groq (if API key set)
+   - If both fail → Use offline fallback (no AI observations)
+
+2. **Explicit provider** (`LLM_PROVIDER=lmstudio`):
+   - Only try LM Studio
+   - Fail to offline fallback if unavailable
+
+3. **Groq only** (`LLM_PROVIDER=groq`):
+   - Only try Groq cloud API
+   - Fail to offline fallback if unavailable
+
+### Model Recommendations
+
+**For Docker/Remote Setup:**
+- Use `openai/gpt-oss-120b` for best quality
+- Response time: 2-5 seconds (depending on host hardware)
+
+**For Native/Direct Setup:**
+- Use `openai/gpt-oss-20b` for balanced performance
+- Use `llama-3.1-8b-instant` for fastest responses
+
+**Hardware Considerations:**
+- 120b model: Requires 16GB+ RAM, slower but better quality
+- 20b model: Requires 8GB+ RAM, good balance
+- 8b model: Requires 4GB+ RAM, fastest
+
+### Troubleshooting
+
+**Problem: Cannot connect to LM Studio**
+```bash
+# Test connectivity
+curl -I http://localhost:1234/v1/models
+# OR in Docker:
+curl -I http://host.docker.internal:1234/v1/models
+
+# If fails, check:
+# 1. LM Studio server is running (green indicator)
+# 2. Port 1234 is not blocked by firewall
+# 3. Docker networking allows host.docker.internal access
+```
+
+**Problem: Timeout errors**
+```bash
+# Increase timeout for slower models
+export LM_STUDIO_TIMEOUT=10000  # 10 seconds
+
+# Reduce max_tokens for faster responses
+# (Edit LMStudioProvider.ts max_tokens setting)
+```
+
+**Problem: Model not found**
+```bash
+# List available models
+curl -s http://localhost:1234/v1/models | jq -r '.data[].id'
+
+# Use exact model ID from the list
+export LM_STUDIO_MODEL=<model-id-from-list>
+```
+
+**Problem: Poor quality responses**
+```bash
+# Try larger model
+export LM_STUDIO_MODEL=openai/gpt-oss-120b
+
+# OR switch to Groq for comparison
+export LLM_PROVIDER=groq
+export GROQ_API_KEY=gsk_your_key_here
+```
+
+### Implementation Details
+
+**Files Modified:**
+- `src/llm/LlmWrapper.ts`: Abstract base class for providers
+- `src/llm/LlmWrapperSettings.ts`: Configuration types
+- `src/llm/LlmWrapperFactory.ts`: Provider factory
+- `src/llm/providers/GroqProvider.ts`: Groq cloud provider
+- `src/llm/providers/LMStudioProvider.ts`: LM Studio local provider
+- `src/utils/config.ts`: Added LM Studio configuration
+- `src/engine/feedback/TranscriptAnalyzer.ts`: Uses LlmWrapper
+- `src/workers/analyze-transcript.ts`: Uses LlmWrapper
+
+**Backward Compatibility:**
+All existing Groq-based setups continue to work without changes. The LlmWrapper abstraction wraps the original GroqClient functionality.
+
+**Migration:**
+No migration required. New environment variables are optional. Existing `GROQ_API_KEY` and `PET_GROQ_*` variables work as before.
+
+---
+
+================================================================================
+SUMMARY OF CHANGES
+================================================================================
+
+1. Add "LLM Provider Abstraction (LlmWrapper)" section after Architecture Overview
+2. Update "Key Environment Variables" section with LM Studio configuration
+3. Add new "LM Studio Integration" section with:
+   - What is LM Studio?
+   - Why use it?
+   - Complete setup instructions
+   - Provider fallback explanation
+   - Model recommendations
+   - Troubleshooting guide
+   - Implementation details
+
+================================================================================
+IMPLEMENTATION
+================================================================================
+
+To apply these changes:
+
+1. Read /home/user/tamagotchi-dev/CLAUDE.md
+2. Insert LLM Provider Abstraction section after "## Architecture Overview"
+3. Replace the "AI Feedback System (Optional):" section in Environment Variables
+4. Add "## LM Studio Integration" section after "## New Features"
+5. Commit changes to repository
+
+================================================================================
+END OF PROPOSAL
+================================================================================

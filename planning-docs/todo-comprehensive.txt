@@ -1,0 +1,212 @@
+================================================================================
+CLAUDE CODE TAMAGOTCHI - LM STUDIO INTEGRATION TODO (COMPREHENSIVE)
+================================================================================
+Created: 2025-11-03
+Status: Planning Phase
+Priority: High
+Goal: Add LM Studio (gpt-oss-120b) support via LlmWrapper abstraction
+
+Related Documents:
+- LLM-INTEGRATION-ANALYSIS.txt (Complete analysis and architecture)
+- LMSTUDIO-ACCESS.txt (API reference and examples)
+- USAGE-GUIDE.txt (User documentation)
+- todo.txt (Original simpler todo list)
+
+This is the COMPREHENSIVE version with detailed task breakdown.
+See todo.txt for the simpler version.
+
+================================================================================
+TASK ORGANIZATION
+================================================================================
+
+Tasks are organized into phases:
+- PHASE 1: Infrastructure (LlmWrapper abstraction)
+- PHASE 2: Provider Implementation (Groq + LM Studio)
+- PHASE 3: Configuration Updates
+- PHASE 4: Code Refactoring
+- PHASE 5: Testing
+- PHASE 6: Documentation
+
+Each task marked with:
+[_] Not started
+[~] In progress
+[✓] Completed
+[X] Blocked/Skipped
+
+
+================================================================================
+PHASE 1: INFRASTRUCTURE - CREATE LLMWRAPPER ABSTRACTION
+================================================================================
+
+[_] TASK 1.1: Create LlmWrapper Interface
+    File: src/llm/LlmWrapper.ts
+    Description: Define abstract class/interface for all LLM providers
+    Requirements:
+      - Export LlmWrapper abstract class
+      - Define analyzeUserMessage(userMessage, sessionHistory) method
+      - Define analyzeExchange(...) method matching current GroqClient
+      - Protected callLlmWithTimeout(prompt) method
+      - Constructor accepting LlmWrapperSettings
+    Dependencies: None
+    Estimated Time: 30 minutes
+
+[_] TASK 1.2: Create LlmWrapperSettings Types
+    File: src/llm/LlmWrapperSettings.ts
+    Description: Type definitions for LLM provider configuration
+    Requirements:
+      - Export LlmWrapperSettings interface
+      - Provider selection: 'groq' | 'lmstudio' | 'openai'
+      - Common settings: timeout, maxRetries, model
+      - Provider-specific settings objects
+      - Export LlmResponse interface
+    Dependencies: None
+    Estimated Time: 20 minutes
+
+[_] TASK 1.3: Create LlmWrapperFactory
+    File: src/llm/LlmWrapperFactory.ts
+    Description: Factory pattern for creating provider instances
+    Requirements:
+      - Export LlmWrapperFactory class
+      - Static create(settings) method
+      - Switch on settings.provider
+      - Return appropriate provider instance
+      - Throw error for unknown providers
+    Dependencies: TASK 1.1, TASK 1.2
+    Estimated Time: 15 minutes
+
+[_] TASK 1.4: Create Providers Directory
+    Command: mkdir -p src/llm/providers
+    Description: Organize provider implementations in subdirectory
+    Dependencies: None
+    Estimated Time: 1 minute
+
+
+================================================================================
+PHASE 2: PROVIDER IMPLEMENTATION
+================================================================================
+
+[_] TASK 2.1: Implement GroqProvider
+    File: src/llm/providers/GroqProvider.ts
+    Description: Migrate existing GroqClient logic to new provider structure
+    Requirements:
+      - Extend LlmWrapper abstract class
+      - Import 'groq-sdk' package
+      - Copy logic from src/llm/GroqClient.ts
+      - Implement analyzeUserMessage() method
+      - Implement analyzeExchange() method
+      - Implement callLlmWithTimeout() method
+      - Maintain all existing features
+    Dependencies: TASK 1.1, TASK 1.2
+    Estimated Time: 2 hours
+
+[_] TASK 2.2: Implement LMStudioProvider
+    File: src/llm/providers/LMStudioProvider.ts
+    Description: New provider for LM Studio OpenAI-compatible API
+    Requirements:
+      - Extend LlmWrapper abstract class
+      - Use fetch() for HTTP client
+      - Implement all required methods
+    Dependencies: TASK 1.1, TASK 1.2
+    Estimated Time: 2 hours
+
+
+================================================================================
+PHASE 3: CONFIGURATION UPDATES
+================================================================================
+
+[_] TASK 3.1: Update PetConfig Interface
+    File: src/utils/config.ts
+    Description: Add LM Studio and provider selection configuration
+    Estimated Time: 15 minutes
+
+[_] TASK 3.2: Update Config Default Values
+    File: src/utils/config.ts
+    Description: Add environment variable mappings
+    Estimated Time: 10 minutes
+
+[_] TASK 3.3: Create Config to Settings Mapper
+    File: src/utils/config.ts
+    Description: Helper to build LlmWrapperSettings from PetConfig
+    Estimated Time: 30 minutes
+
+
+================================================================================
+PHASE 4: CODE REFACTORING
+================================================================================
+
+[_] TASK 4.1: Refactor TranscriptAnalyzer
+    File: src/engine/feedback/TranscriptAnalyzer.ts
+    Description: Use LlmWrapper instead of direct GroqClient
+    Estimated Time: 30 minutes
+
+[_] TASK 4.2: Refactor analyze-transcript Worker
+    File: src/workers/analyze-transcript.ts
+    Description: Use LlmWrapper instead of direct GroqClient
+    Estimated Time: 30 minutes
+
+[_] TASK 4.3: Update FeedbackSystem
+    File: src/engine/feedback/FeedbackSystem.ts
+    Description: Pass LLM provider config to TranscriptAnalyzer
+    Estimated Time: 15 minutes
+
+
+================================================================================
+PHASE 5: TESTING
+================================================================================
+
+[_] TASK 5.1: Unit Test - GroqProvider
+[_] TASK 5.2: Unit Test - LMStudioProvider
+[_] TASK 5.3: Integration Test - Groq Provider
+[_] TASK 5.4: Integration Test - LM Studio Provider (120b)
+[_] TASK 5.5: Integration Test - LM Studio Provider (20b)
+[_] TASK 5.6: Integration Test - Auto Fallback Mode
+[_] TASK 5.7: Performance Benchmarking
+[_] TASK 5.8: Quality Comparison
+
+
+================================================================================
+PHASE 6: DOCUMENTATION
+================================================================================
+
+[_] TASK 6.1: Update README.md
+[_] TASK 6.2: Update LMSTUDIO-ACCESS.txt
+[_] TASK 6.3: Update USAGE-GUIDE.txt
+[_] TASK 6.4: Create .env.example
+[_] TASK 6.5: Create MIGRATION-GUIDE.txt
+[_] TASK 6.6: Update Project CLAUDE.md
+
+
+================================================================================
+TIMELINE ESTIMATES
+================================================================================
+
+PHASE 1 (Infrastructure):        ~1.5 hours
+PHASE 2 (Providers):             ~5 hours
+PHASE 3 (Configuration):         ~1.5 hours
+PHASE 4 (Refactoring):           ~1.5 hours
+PHASE 5 (Testing):               ~6 hours
+PHASE 6 (Documentation):         ~2.5 hours
+
+TOTAL ESTIMATED TIME:            ~18 hours
+
+
+================================================================================
+PROGRESS TRACKING
+================================================================================
+
+PHASE 1: [___________] 0/4 tasks complete (0%)
+PHASE 2: [___________] 0/2 tasks complete (0%)
+PHASE 3: [___________] 0/3 tasks complete (0%)
+PHASE 4: [___________] 0/3 tasks complete (0%)
+PHASE 5: [___________] 0/8 tasks complete (0%)
+PHASE 6: [___________] 0/6 tasks complete (0%)
+
+OVERALL: [___________] 0/26 tasks complete (0%)
+
+Last Updated: 2025-11-03
+Status: Ready to begin PHASE 1
+
+
+================================================================================
+END OF COMPREHENSIVE TODO
+================================================================================
