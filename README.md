@@ -286,6 +286,28 @@ export PET_VIOLATION_CHECK_ENABLED=true
 - 🚀 **No Rate Limits** - Use as much as you want
 - 📡 **Offline Capable** - Works without internet
 
+**Embedding Models (Optional - For Future Features):**
+
+LM Studio supports vector embeddings for semantic search and similarity. **6 embedding models work:**
+
+| Model Name | Dimensions | Size | Best For |
+|-----------|-----------|------|----------|
+| `text-embedding-nomic-embed-text-v1.5` | 768 | Small | General purpose, fast |
+| `text-embedding-granite-embedding-125m-english` | 768 | 125M | Fastest, English only |
+| `text-embedding-qwen3-embedding-0.6b` | 1024 | 600M | Good balance |
+| `text-embedding-qwen3-embedding-4b` | 2560 | 4B | High quality |
+| `text-embedding-qwen3-embedding-8b` | 4096 | 8B | **Best quality** |
+| `text-embedding-embeddinggemma-300m-with-dense-modules` | 768 | 300M | Compact, good quality |
+
+**Note:** `jina-embeddings-v4-text-retrieval` appears in model list but returns "Model is not embedding" error.
+
+To configure embeddings:
+```bash
+export PET_EMBEDDING_PROVIDER=lmstudio
+export LM_STUDIO_EMBEDDING_MODEL=text-embedding-qwen3-embedding-8b
+export PET_EMBEDDING_DIMENSIONS=4096  # Must match model dimensions
+```
+
 **Note:** You **must** explicitly set `PET_LLM_PROVIDER` to either `groq` or `lmstudio`. There is no automatic fallback to prevent unexpected behavior or costs.
 
 ## Commands & Interaction

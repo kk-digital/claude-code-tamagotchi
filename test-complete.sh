@@ -170,7 +170,19 @@ fi
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 print_test "Test embedding API endpoint"
 if [ -n "$EMBEDDING_MODELS" ]; then
-    EMBEDDING_MODEL=$(echo "$EMBEDDING_MODELS" | head -1)
+    # Use a known working model (nomic-embed works reliably)
+    EMBEDDING_MODEL="text-embedding-nomic-embed-text-v1.5"
+
+    # Verify model is available
+    if ! echo "$EMBEDDING_MODELS" | grep -q "$EMBEDDING_MODEL"; then
+        # Fallback to any qwen3 model (they all work)
+        EMBEDDING_MODEL=$(echo "$EMBEDDING_MODELS" | grep "qwen3" | head -1)
+        if [ -z "$EMBEDDING_MODEL" ]; then
+            # Last resort: any text-embedding model
+            EMBEDDING_MODEL=$(echo "$EMBEDDING_MODELS" | grep "text-embedding" | head -1)
+        fi
+    fi
+
     EMBEDDING_RESPONSE=$(curl -s -X POST "${LM_STUDIO_URL}/embeddings" \
         -H "Content-Type: application/json" \
         -d "{\"model\": \"$EMBEDDING_MODEL\", \"input\": \"test\"}" 2>&1)
@@ -179,25 +191,16 @@ if [ -n "$EMBEDDING_MODELS" ]; then
     if [ $CURL_EXIT -ne 0 ]; then
         fail "curl command failed (exit code $CURL_EXIT)" "Network error: $EMBEDDING_RESPONSE"
     else
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${LM_STUDIO_URL}/embeddings" \
-            -H "Content-Type: application/json" \
-            -d "{\"model\": \"$EMBEDDING_MODEL\", \"input\": \"test\"}")
-
-        if [ "$HTTP_CODE" = "200" ]; then
-            if echo "$EMBEDDING_RESPONSE" | jq -e '.data[0].embedding' > /dev/null 2>&1; then
-                EMBEDDING_DIM=$(echo "$EMBEDDING_RESPONSE" | jq '.data[0].embedding | length')
-                pass
-                echo "   Model: $EMBEDDING_MODEL"
-                echo "   Embedding dimension: $EMBEDDING_DIM"
-            else
-                fail "Invalid embedding response format" "Response: $EMBEDDING_RESPONSE"
-            fi
-        elif [ "$HTTP_CODE" = "404" ]; then
-            fail "HTTP 404 Not Found" "Embeddings endpoint not available. Check LM Studio version supports embeddings."
-        elif [ "$HTTP_CODE" = "500" ]; then
-            fail "HTTP 500 Internal Server Error" "Model error: $EMBEDDING_RESPONSE"
+        if echo "$EMBEDDING_RESPONSE" | jq -e '.data[0].embedding' > /dev/null 2>&1; then
+            EMBEDDING_DIM=$(echo "$EMBEDDING_RESPONSE" | jq '.data[0].embedding | length')
+            pass
+            echo "   Model: $EMBEDDING_MODEL"
+            echo "   Embedding dimension: $EMBEDDING_DIM"
+        elif echo "$EMBEDDING_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+            ERROR_MSG=$(echo "$EMBEDDING_RESPONSE" | jq -r '.error.message')
+            fail "Model error: $ERROR_MSG" "Some models may not be loaded. Working models: nomic-embed, qwen3-*, granite, embeddinggemma. Failed model: jina-v4"
         else
-            fail "HTTP $HTTP_CODE" "Response: $EMBEDDING_RESPONSE"
+            fail "Invalid embedding response format" "Response: $EMBEDDING_RESPONSE"
         fi
     fi
 else
