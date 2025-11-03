@@ -1,34 +1,39 @@
 ================================================================================
-TODO: LlmHttpProvider Refactoring (DEFERRED)
+TODO: LlmHttpProvider Refactoring + Embedding Abstraction (ACTIVE)
 ================================================================================
-Status: DEFERRED - Implement when adding 3rd HTTP-based provider
-Trigger: When adding Ollama, Anthropic, or other HTTP-based LLM provider
+Status: ACTIVE - Implement now (2 providers is enough for abstraction)
+Priority: HIGH - Centralization is important, avoid technical debt
 Current: 2 providers (GroqProvider uses SDK, LMStudioProvider uses HTTP)
 Date Created: 2025-11-04
-Estimated Effort: 3-4 hours
+Date Updated: 2025-11-04 (status changed from DEFERRED to ACTIVE)
+Estimated Effort: 6-8 hours
 
 ================================================================================
-RATIONALE
+RATIONALE (UPDATED)
 ================================================================================
 
 PROBLEM:
 - LMStudioProvider implements HTTP logic directly (fetch, timeout, retry)
-- When adding 3rd HTTP provider (Ollama, Anthropic), will duplicate this logic
+- Future providers (Ollama, Anthropic) will duplicate this logic
 - Current design: Each provider handles its own HTTP calls
-- "Rule of Three": Wait for 3 instances of duplication before abstracting
+- No abstraction for embeddings (LM Studio has 7 embedding models but no wrapper)
 
-WHY DEFER:
-- Current design works fine with 2 providers
-- GroqProvider uses SDK (not HTTP) - doesn't need refactoring
-- LMStudioProvider is only HTTP provider currently
-- No code duplication yet (only 1 HTTP implementation)
-- Premature abstraction is worse than duplication
+WHY IMPLEMENT NOW (2 providers is sufficient):
+- Centralization is important - extract shared logic now
+- Avoid technical debt accumulating
+- Easier to add future providers with abstraction in place
+- LM Studio supports both chat completions AND embeddings
+- Need separate abstractions for different use cases
+
+THREE SEPARATE ABSTRACTIONS NEEDED:
+1. LlmHttpProvider - Chat completions, text generation (general LLM)
+2. EmbeddingHttpProvider - Vector embeddings, semantic search
+3. Keep these SEPARATE - different use cases, different interfaces
 
 WHEN TO IMPLEMENT:
-- When adding Ollama provider (HTTP-based, OpenAI-compatible API)
-- When adding Anthropic provider (HTTP-based, custom API)
-- When adding local model providers (llamafile, Jan, etc.)
-- When you see copy-paste of timeout/retry logic in new provider
+- NOW - 2 providers is enough to justify abstraction
+- Centralization prevents duplication
+- Embeddings support needed for future features
 
 ================================================================================
 REQUIREMENTS
@@ -80,18 +85,54 @@ REQUIREMENTS
    - Error handling tests (network errors, HTTP errors)
    - Streaming tests (if implemented)
 
+7. EMBEDDING ABSTRACTION (NEW REQUIREMENT)
+   - Create separate EmbeddingWrapper abstraction
+   - EmbeddingHttpProvider for HTTP-based embedding providers
+   - Keep COMPLETELY SEPARATE from LlmWrapper
+   - Different use cases: semantic search, similarity, clustering
+   - Different interface: embed(text) returns vector, not LlmResponse
+   - LM Studio supports embeddings but API returns 404 (needs investigation)
+
+8. DATABASE ABSTRACTION (NEW REQUIREMENT - CRITICAL FOR CENTRALIZATION)
+   - Wrap ALL database/SQL operations through ONE module
+   - Create DatabaseWrapper or DatabaseManager abstraction
+   - All database access goes through this wrapper (no direct sqlite3 calls)
+   - Benefits:
+     - Centralized logging of all database operations
+     - Easy to test components independently (mock database wrapper)
+     - Easy to swap database backend (SQLite → PostgreSQL, etc.)
+     - Transaction management in one place
+     - Query logging for debugging and performance analysis
+   - Current state: Direct sqlite3 calls scattered throughout codebase
+   - Target: All database operations go through src/database/DatabaseWrapper.ts
+
+9. CODE REVIEW LLM WRAPPER (NEW REQUIREMENT - IF USED)
+   - If code review LLM is used, wrap through dedicated abstraction
+   - Create CodeReviewWrapper separate from general LlmWrapper
+   - Different use case: code analysis, PR review, feedback generation
+   - Specialized prompts and parsing for code review tasks
+   - May use LlmWrapper internally but provides higher-level interface
+   - Benefits:
+     - Centralized code review prompts and logic
+     - Easy to test code review independently
+     - Easy to swap underlying LLM provider
+     - Logging of all code review operations
+   - Location: src/code-review/CodeReviewWrapper.ts (if implemented)
+
 ================================================================================
 PROPOSED ARCHITECTURE
 ================================================================================
 
 CURRENT HIERARCHY:
-  LlmWrapper (abstract)
+  LlmWrapper (abstract - chat completions)
       ↓
   GroqProvider (uses groq-sdk)
   LMStudioProvider (uses fetch directly)
 
-REFACTORED HIERARCHY:
-  LlmWrapper (abstract - all providers)
+REFACTORED HIERARCHY (FOUR SEPARATE ABSTRACTIONS):
+
+1. CHAT COMPLETIONS / TEXT GENERATION:
+   LlmWrapper (abstract - all LLM providers)
       ↓
       ├─ GroqProvider (extends LlmWrapper, uses SDK)
       ↓
@@ -102,11 +143,45 @@ REFACTORED HIERARCHY:
              ├─ AnthropicProvider (extends LlmHttpProvider)
              └─ OpenAIProvider (extends LlmHttpProvider)
 
-KEY INSIGHT:
-- SDK-based providers (GroqProvider) extend LlmWrapper directly
-- HTTP-based providers extend LlmHttpProvider (which extends LlmWrapper)
-- LlmHttpProvider provides shared HTTP implementation
-- Each HTTP provider customizes endpoint, request format, response parsing
+2. EMBEDDINGS (SEPARATE - NO CODE SHARING WITH LLM):
+   EmbeddingWrapper (abstract - all embedding providers) ← NEW
+      ↓
+      └─ EmbeddingHttpProvider (abstract - HTTP providers) ← NEW
+             ↓
+             ├─ LMStudioEmbeddingProvider (extends EmbeddingHttpProvider)
+             ├─ OllamaEmbeddingProvider (extends EmbeddingHttpProvider)
+             └─ OpenAIEmbeddingProvider (extends EmbeddingHttpProvider)
+
+3. DATABASE OPERATIONS (CENTRALIZED):
+   DatabaseWrapper (abstract - all database backends) ← NEW
+      ↓
+      ├─ SQLiteDatabase (extends DatabaseWrapper)
+      ├─ PostgreSQLDatabase (extends DatabaseWrapper) ← FUTURE
+      └─ MockDatabase (extends DatabaseWrapper) ← FOR TESTING
+
+   Current code → Uses DatabaseWrapper ONLY
+   - FeedbackDatabase uses DatabaseWrapper
+   - PetState uses DatabaseWrapper
+   - All components use DatabaseWrapper (no direct sqlite3)
+
+4. CODE REVIEW (IF USED - HIGHER LEVEL ABSTRACTION):
+   CodeReviewWrapper ← NEW (if code review feature exists)
+      ↓
+      Uses LlmWrapper internally
+      Provides specialized interface:
+      - reviewCode(code: string): Promise<CodeReviewResult>
+      - analyzePR(pr: PullRequest): Promise<PRAnalysis>
+      - suggestImprovements(code: string): Promise<Suggestion[]>
+
+KEY INSIGHTS:
+- SDK-based LLM providers (GroqProvider) extend LlmWrapper directly
+- HTTP-based LLM providers extend LlmHttpProvider (shared timeout/retry logic)
+- Embedding providers are COMPLETELY SEPARATE (different interface, different use case)
+- Database wrapper centralizes ALL database operations (logging, testing, swapping backends)
+- Code review wrapper is higher-level abstraction over LlmWrapper (domain-specific)
+- ALL abstractions support: centralized logging, independent testing, easy mocking
+- LlmHttpProvider and EmbeddingHttpProvider MAY share common HTTP utility functions
+- BUT embeddings and LLM have different return types, different methods, different purposes
 
 ================================================================================
 IMPLEMENTATION PLAN
@@ -158,40 +233,113 @@ PHASE 3: Update LlmWrapper (30 minutes)
 [ ] Update LlmWrapper interface documentation
 [ ] TypeScript compiles successfully
 
-PHASE 4: Add New HTTP Provider (example: Ollama) (1 hour)
-[ ] Create src/llm/providers/OllamaProvider.ts
-[ ] Extend LlmHttpProvider
-[ ] Implement getEndpoint(): return `${this.settings.url}/api/generate`
-[ ] Implement buildRequestBody(prompt): return Ollama-specific format
-[ ] Implement parseResponse(response): extract text from response.response
-[ ] Implement buildHeaders(): return Ollama headers
-[ ] Update LlmWrapperFactory to create OllamaProvider
-[ ] Add Ollama configuration to src/utils/config.ts
-[ ] Add OLLAMA_ENABLED, OLLAMA_URL, OLLAMA_MODEL env vars
-[ ] Test OllamaProvider with local Ollama instance
+PHASE 4: Create Embedding Abstraction (2 hours)
+[ ] Create src/embedding/ directory
+[ ] Create src/embedding/EmbeddingWrapper.ts (abstract base class):
+    [ ] abstract embed(text: string): Promise<EmbeddingResponse>
+    [ ] abstract embedBatch(texts: string[]): Promise<EmbeddingResponse[]>
+    [ ] EmbeddingResponse interface: { vector: number[], model: string, dimensions: number }
+    [ ] EmbeddingWrapperSettings interface: { provider, url, model, timeout, maxRetries }
+[ ] Create src/embedding/EmbeddingHttpProvider.ts (abstract HTTP base):
+    [ ] Extend EmbeddingWrapper
+    [ ] Shared HTTP logic (similar to LlmHttpProvider)
+    [ ] async httpPost<T>() with timeout/retry
+    [ ] Abstract methods: getEmbedEndpoint(), buildEmbedRequest(), parseEmbedResponse()
+[ ] Create src/embedding/EmbeddingWrapperFactory.ts:
+    [ ] create(settings: EmbeddingWrapperSettings): EmbeddingWrapper
+    [ ] Switch on provider type (lmstudio, ollama, openai)
 [ ] TypeScript compiles successfully
 
-PHASE 5: Testing (1 hour)
-[ ] Create test-ollama.sh (similar to test-lmstudio.sh)
-[ ] Test all three providers:
+PHASE 5: Implement LM Studio Embedding Provider (1.5 hours)
+[ ] Create src/embedding/providers/LMStudioEmbeddingProvider.ts
+[ ] Extend EmbeddingHttpProvider
+[ ] Implement getEmbedEndpoint(): return `${this.settings.url}/embeddings`
+[ ] Implement buildEmbedRequest(text): return { model, input: text }
+[ ] Implement parseEmbedResponse(response): extract vector from response.data[0].embedding
+[ ] CRITICAL: Test if LM Studio actually supports /embeddings endpoint
+    [ ] If returns 404: Document limitation, create stub implementation
+    [ ] If works: Implement full embedding support
+[ ] Add embedding configuration to config.ts
+[ ] Create test-embeddings.sh script
+[ ] Test with jina-embeddings-v4-text-retrieval model
+[ ] Test with text-embedding-qwen3-embedding-8b model
+[ ] TypeScript compiles successfully
+
+PHASE 6: Create Database Wrapper Abstraction (3 hours)
+[ ] Create src/database/ directory
+[ ] Create src/database/DatabaseWrapper.ts (abstract base class):
+    [ ] abstract query<T>(sql: string, params?: any[]): Promise<T[]>
+    [ ] abstract execute(sql: string, params?: any[]): Promise<void>
+    [ ] abstract get<T>(sql: string, params?: any[]): Promise<T | null>
+    [ ] abstract transaction<T>(callback: () => Promise<T>): Promise<T>
+    [ ] abstract close(): Promise<void>
+    [ ] DatabaseSettings interface: { type, path, options }
+[ ] Create src/database/SQLiteDatabase.ts:
+    [ ] Extend DatabaseWrapper
+    [ ] Implement all abstract methods using better-sqlite3
+    [ ] Wrap ALL sqlite3 operations
+    [ ] Add query logging (optional, configurable)
+    [ ] Add error handling with detailed messages
+[ ] Create src/database/MockDatabase.ts (for testing):
+    [ ] Extend DatabaseWrapper
+    [ ] In-memory implementation for testing
+    [ ] No actual database operations
+    [ ] Returns mock data for tests
+[ ] Create src/database/DatabaseFactory.ts:
+    [ ] create(settings: DatabaseSettings): DatabaseWrapper
+    [ ] Switch on database type (sqlite, mock, postgresql-future)
+[ ] TypeScript compiles successfully
+
+PHASE 7: Refactor Existing Database Code (2 hours)
+[ ] Update src/engine/feedback/FeedbackDatabase.ts:
+    [ ] Replace direct sqlite3 calls with DatabaseWrapper
+    [ ] Constructor takes DatabaseWrapper instance
+    [ ] All queries go through DatabaseWrapper.query()
+    [ ] All updates go through DatabaseWrapper.execute()
+    [ ] Remove direct database handling
+[ ] Search codebase for ALL sqlite3 usage:
+    [ ] grep -r "better-sqlite3" src/
+    [ ] grep -r "Database(" src/
+    [ ] grep -r ".prepare(" src/
+    [ ] grep -r ".exec(" src/
+[ ] Refactor ALL files with direct database access:
+    [ ] Replace with DatabaseWrapper calls
+    [ ] Update constructors to accept DatabaseWrapper
+    [ ] Update tests to use MockDatabase
+[ ] Verify all database operations centralized
+[ ] Run tests to verify refactoring works
+
+PHASE 8: Testing (1.5 hours)
+[ ] Create test-database.sh script
+[ ] Test SQLiteDatabase implementation:
+    [ ] Test query() with SELECT
+    [ ] Test execute() with INSERT/UPDATE/DELETE
+    [ ] Test get() with single row
+    [ ] Test transaction() with rollback
+    [ ] Test close()
+[ ] Test all LLM providers:
     [ ] GroqProvider (SDK-based)
     [ ] LMStudioProvider (HTTP-based, refactored)
-    [ ] OllamaProvider (HTTP-based, new)
+[ ] Test all embedding providers:
+    [ ] LMStudioEmbeddingProvider (if API works)
 [ ] Verify timeout enforcement works
 [ ] Verify retry logic works (simulate transient errors)
 [ ] Verify error handling works (simulate network errors)
 [ ] Run test-complete.sh for all providers
-[ ] Update README.md with Ollama provider documentation
+[ ] Update README.md with provider documentation
 
-PHASE 6: Documentation (30 minutes)
+PHASE 9: Documentation (30 minutes)
 [ ] Update PROGRESS-CHECKPOINT.txt with refactoring commits
 [ ] Document LlmHttpProvider architecture in comments
+[ ] Document EmbeddingHttpProvider architecture in comments
+[ ] Document DatabaseWrapper architecture in comments
 [ ] Update README.md with provider selection guide
 [ ] Add example of adding new HTTP provider to README
-[ ] Create diagram of provider hierarchy
+[ ] Add example of adding new database backend to README
+[ ] Create diagram of all four abstraction hierarchies
 [ ] Delete this TODO file after completion
 
-TOTAL ESTIMATED TIME: 6 hours
+TOTAL ESTIMATED TIME: 12-14 hours (doubled from original 6 hours due to database + embedding abstractions)
 
 ================================================================================
 CODE EXAMPLES
@@ -660,18 +808,32 @@ Related files:
 - src/llm/LlmWrapperFactory.ts (provider factory)
 - src/llm/providers/GroqProvider.ts (SDK-based provider)
 - src/llm/providers/LMStudioProvider.ts (HTTP-based provider)
+- src/engine/feedback/FeedbackDatabase.ts (uses direct sqlite3, needs refactoring)
 - PROGRESS-CHECKPOINT.txt (LM Studio integration history)
 - TODO-usage-logging.txt (separate feature, not related)
 
+New files to create:
+- src/llm/LlmHttpProvider.ts (HTTP provider base class)
+- src/embedding/EmbeddingWrapper.ts (embedding abstraction)
+- src/embedding/EmbeddingHttpProvider.ts (embedding HTTP base class)
+- src/embedding/providers/LMStudioEmbeddingProvider.ts
+- src/database/DatabaseWrapper.ts (database abstraction)
+- src/database/SQLiteDatabase.ts (SQLite implementation)
+- src/database/MockDatabase.ts (testing mock)
+- src/database/DatabaseFactory.ts (database factory)
+
 Design patterns:
-- Template Method Pattern (LlmHttpProvider defines algorithm, subclasses implement steps)
-- Factory Pattern (LlmWrapperFactory creates providers)
+- Template Method Pattern (base classes define algorithm, subclasses implement steps)
+- Factory Pattern (factories create appropriate implementations)
 - Strategy Pattern (different providers implement same interface)
+- Repository Pattern (DatabaseWrapper abstracts data access)
+- Dependency Injection (components receive wrapper instances via constructor)
 
 References:
 - OpenAI API documentation: https://platform.openai.com/docs/api-reference
 - Ollama API documentation: https://github.com/ollama/ollama/blob/main/docs/api.md
 - LM Studio documentation: https://lmstudio.ai/docs
+- better-sqlite3 documentation: https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md
 
 ================================================================================
 END OF TODO
