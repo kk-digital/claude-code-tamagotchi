@@ -1,0 +1,348 @@
+================================================================================
+TODO: Docker Container Environment Fixes
+================================================================================
+Status: ACTIVE - Fix container to run tests independently
+Priority: MEDIUM - Tests work on host, but should work in Docker too
+Date Created: 2025-11-04
+Estimated Effort: 2-3 hours
+
+================================================================================
+PROBLEM STATEMENT
+================================================================================
+
+CURRENT STATE:
+- Tests run successfully on macOS host (15/18 pass, 3 expected failures)
+- Tests fail in Docker container due to missing dependencies
+- Application RUNS in Docker (pet displays correctly)
+- But comprehensive test suite cannot complete in Docker
+
+ISSUES FOUND:
+1. jq not installed in Docker container (required for JSON parsing in tests)
+2. .env uses localhost:1234 instead of host.docker.internal:1234
+3. TypeScript build command missing --target flag for Node.js builds
+4. Test suite assumes jq is available
+
+GOAL:
+- All 18 tests should pass when running inside Docker container
+- Tests should work independently of host machine tools
+- Docker should be self-contained testing environment
+
+================================================================================
+REQUIREMENTS
+================================================================================
+
+1. INSTALL JQ IN DOCKER CONTAINER
+   - Add jq to Dockerfile or installation script
+   - jq is required for JSON parsing in test-complete.sh
+   - All tests 7-13 depend on jq for parsing API responses
+   - Package: apt-get install jq (Debian/Ubuntu)
+
+2. FIX .ENV CONFIGURATION FOR DOCKER
+   - Create separate .env for Docker vs host
+   - Docker needs: http://host.docker.internal:1234/v1
+   - Host needs: http://localhost:1234/v1
+   - Options:
+     a) Detect environment (Docker vs host) and set URL automatically
+     b) Use .env.docker and .env.host files
+     c) Document that .env must be updated when copying to Docker
+
+3. FIX TYPESCRIPT BUILD COMMAND
+   - Current command: bun build src/index.ts --outdir /tmp/test-build
+   - Error: "Browser build cannot import Node.js builtin: child_process"
+   - Fix: Add --target=node or --target=bun flag
+   - Correct command: bun build src/index.ts --outdir /tmp/test-build --target=node
+   - Update test-complete.sh with correct build command
+
+4. VERIFY ALL TESTS PASS IN DOCKER
+   - Run test-complete.sh inside Docker
+   - Expect: 18/18 tests pass (or 17/18 if embeddings not loaded)
+   - Document any remaining failures
+
+5. UPDATE README WITH DOCKER TESTING INSTRUCTIONS
+   - Add section on running tests in Docker
+   - Document SSH command to access Docker container
+   - Explain .env configuration differences
+   - Add troubleshooting for common Docker issues
+
+================================================================================
+IMPLEMENTATION PLAN
+================================================================================
+
+PHASE 1: Install jq in Docker Container (30 minutes)
+[ ] Locate Dockerfile or Docker setup script
+[ ] Add jq installation to Dockerfile:
+    [ ] RUN apt-get update && apt-get install -y jq
+    [ ] Or add to existing apt-get install line
+[ ] Rebuild Docker image:
+    [ ] docker build -t docker-tamagotchi .
+    [ ] Or follow existing build process
+[ ] Verify jq installed:
+    [ ] ssh into container
+    [ ] Run: which jq
+    [ ] Run: jq --version
+[ ] Alternative if no Dockerfile:
+    [ ] Create setup script: install-jq.sh
+    [ ] Run once in container: sudo apt-get install -y jq
+    [ ] Document in README
+
+PHASE 2: Fix .env Configuration (30 minutes)
+[ ] Create .env.docker template:
+    [ ] Copy .env to .env.docker
+    [ ] Change localhost:1234 to host.docker.internal:1234
+    [ ] Add comment explaining Docker-specific settings
+[ ] Update .env.example:
+    [ ] Add note about Docker vs host configuration
+    [ ] Document host.docker.internal requirement
+[ ] Create helper script to detect environment:
+    [ ] detect-env.sh checks if running in Docker
+    [ ] Automatically uses correct LM Studio URL
+    [ ] Alternative: use environment variable LM_STUDIO_HOST
+[ ] Document in README:
+    [ ] When to use localhost vs host.docker.internal
+    [ ] How to configure .env for Docker
+
+PHASE 3: Fix TypeScript Build Command (15 minutes)
+[ ] Update test-complete.sh:
+    [ ] Find line with "bun build src/index.ts"
+    [ ] Add --target=node flag
+    [ ] Before: bun build src/index.ts --outdir /tmp/test-build
+    [ ] After: bun build src/index.ts --outdir /tmp/test-build --target=node
+[ ] Test build command:
+    [ ] ssh into Docker container
+    [ ] Run: bun build src/index.ts --outdir /tmp/test-build --target=node
+    [ ] Verify no errors
+    [ ] Clean up: rm -rf /tmp/test-build
+
+PHASE 4: Test Suite Validation (45 minutes)
+[ ] Copy updated files to Docker:
+    [ ] test-complete.sh (with fixed build command)
+    [ ] .env (with host.docker.internal)
+[ ] Run full test suite in Docker:
+    [ ] ssh -i ~/.ssh/id_ed25519_docker -p 8224 user@localhost
+    [ ] cd /home/user/tamagotchi-dev
+    [ ] ./test-complete.sh
+[ ] Document results:
+    [ ] How many tests pass? (expect 18/18 or 17/18)
+    [ ] Any remaining failures?
+    [ ] Performance (response times)
+[ ] Compare Docker vs host results:
+    [ ] Host: 15 pass, 1 fail (bun), 2 skip
+    [ ] Docker: ? pass, ? fail, ? skip
+    [ ] Document differences
+
+PHASE 5: Update README (30 minutes)
+[ ] Add "Running Tests in Docker" section to README.md
+[ ] Document SSH command to access Docker:
+    [ ] ssh -i ~/.ssh/id_ed25519_docker -p 8224 user@localhost
+[ ] Document .env configuration for Docker:
+    [ ] Use host.docker.internal instead of localhost
+    [ ] Example .env for Docker
+[ ] Add troubleshooting section:
+    [ ] "Tests fail with 'Connection refused'" → Check host.docker.internal
+    [ ] "jq: command not found" → Install jq in container
+    [ ] "Browser build cannot import" → Use --target=node
+[ ] Add test results comparison:
+    [ ] Host results vs Docker results
+    [ ] Expected differences
+
+PHASE 6: Documentation and Cleanup (15 minutes)
+[ ] Update PROGRESS-CHECKPOINT.txt:
+    [ ] Add Docker fixes commit
+    [ ] Document test results in both environments
+[ ] Commit all changes:
+    [ ] Dockerfile or setup script (if modified)
+    [ ] test-complete.sh (fixed build command)
+    [ ] .env.docker (Docker-specific config)
+    [ ] .env.example (updated with Docker notes)
+    [ ] README.md (Docker testing section)
+[ ] Test from clean state:
+    [ ] Clone repo
+    [ ] Follow Docker setup instructions
+    [ ] Run tests
+    [ ] Verify 18/18 pass
+
+TOTAL ESTIMATED TIME: 2-3 hours
+
+================================================================================
+EXPECTED TEST RESULTS AFTER FIXES
+================================================================================
+
+BEFORE FIXES (Current State):
+Host Machine:
+  - Total: 18 tests
+  - Pass: 15 (83.3%)
+  - Fail: 1 (Test 14: Bun not on host)
+  - Skip: 2 (Tests 17-18: Need Bun)
+
+Docker Container:
+  - Total: 18 tests
+  - Pass: 3 (Tests 1-6, only 6 completes)
+  - Fail: 15 (Tests 7-18: jq missing, wrong URL, build issues)
+
+AFTER FIXES (Expected):
+Host Machine:
+  - Total: 18 tests
+  - Pass: 15 (83.3%) - UNCHANGED
+  - Fail: 1 (Test 14: Bun not on host) - EXPECTED
+  - Skip: 2 (Tests 17-18: Need Bun) - EXPECTED
+
+Docker Container:
+  - Total: 18 tests
+  - Pass: 18 (100%) - TARGET ✅
+  - Fail: 0
+  - Skip: 0
+  - All tests should pass including:
+    - Test 10: Embeddings API (6 models work)
+    - Test 14: Bun runtime (installed in Docker)
+    - Test 17: TypeScript compilation (with --target=node)
+    - Test 18: Application smoke test (already works)
+
+================================================================================
+FILES TO MODIFY
+================================================================================
+
+1. Dockerfile or docker-compose.yml or setup script
+   - Add: RUN apt-get update && apt-get install -y jq
+   - Location: /Users/sp/mounts-docker/docker-tamagotchi/
+
+2. test-complete.sh
+   - Change: bun build src/index.ts --outdir /tmp/test-build
+   - To: bun build src/index.ts --outdir /tmp/test-build --target=node
+   - Location: /Users/sp/mounts-docker/docker-tamagotchi/tamagotchi-dev/
+
+3. .env (in Docker container)
+   - Change: LM_STUDIO_URL=http://localhost:1234/v1
+   - To: LM_STUDIO_URL=http://host.docker.internal:1234/v1
+   - Location: /home/user/tamagotchi-dev/.env (inside Docker)
+
+4. .env.example
+   - Add note about Docker configuration
+   - Document host.docker.internal requirement
+   - Location: /Users/sp/mounts-docker/docker-tamagotchi/tamagotchi-dev/
+
+5. README.md
+   - Add "Running Tests in Docker" section
+   - Add Docker troubleshooting
+   - Location: /Users/sp/mounts-docker/docker-tamagotchi/tamagotchi-dev/
+
+6. New file: .env.docker (optional)
+   - Docker-specific environment configuration
+   - Can be copied to .env when running in Docker
+   - Location: /Users/sp/mounts-docker/docker-tamagotchi/tamagotchi-dev/
+
+================================================================================
+DOCKER SETUP INVESTIGATION NEEDED
+================================================================================
+
+QUESTIONS TO ANSWER:
+1. Where is the Dockerfile for docker-tamagotchi?
+   - Check: /Users/sp/mounts-docker/docker-tamagotchi/Dockerfile
+   - Or: docker-compose.yml
+   - Or: setup script that builds container
+
+2. How is the container built?
+   - docker build command?
+   - docker-compose up?
+   - Pre-built image from registry?
+
+3. Can we modify the Dockerfile?
+   - If yes: Add jq to Dockerfile, rebuild
+   - If no: Create post-install script, run once
+
+4. How is tamagotchi-dev mounted?
+   - Volume mount from host?
+   - Copied into container?
+   - This affects .env configuration strategy
+
+5. Is container rebuilt frequently?
+   - If yes: Add jq to Dockerfile (permanent)
+   - If no: Can install jq manually (one-time)
+
+ACTION: Investigate Docker setup before starting Phase 1
+
+================================================================================
+ALTERNATIVE APPROACHES
+================================================================================
+
+APPROACH A: Fix Docker Container (RECOMMENDED)
+- Install jq permanently in Docker image
+- Benefits: Self-contained, reproducible
+- Drawbacks: Requires rebuilding image
+
+APPROACH B: Fix Test Script to Work Without jq
+- Rewrite test-complete.sh to use bun/node for JSON parsing
+- Benefits: No Docker changes needed
+- Drawbacks: More complex test script, slower parsing
+
+APPROACH C: Hybrid - Install jq on First Run
+- Add install-jq.sh script
+- Run once when setting up Docker container
+- Benefits: No Docker rebuild, permanent fix
+- Drawbacks: Manual step, not automatic
+
+RECOMMENDATION: Use Approach A (fix Docker container)
+- Most reliable and reproducible
+- Follows Docker best practices
+- One-time setup, permanent solution
+
+================================================================================
+SUCCESS CRITERIA
+================================================================================
+
+MUST HAVE:
+[ ] jq installed and available in Docker container
+[ ] test-complete.sh runs successfully in Docker
+[ ] 18/18 tests pass in Docker (or 17/18 if embeddings not loaded)
+[ ] .env configured correctly for Docker environment
+[ ] TypeScript build command works in Docker
+[ ] README documents Docker testing process
+
+NICE TO HAVE:
+[ ] Automated environment detection (Docker vs host)
+[ ] .env.docker template for easy Docker setup
+[ ] CI/CD pipeline that runs tests in Docker
+[ ] Performance comparison: Docker vs host
+
+================================================================================
+TROUBLESHOOTING GUIDE
+================================================================================
+
+ISSUE: "jq: command not found" in Docker
+SOLUTION: Install jq in Dockerfile or run setup script
+
+ISSUE: "Cannot connect to LM Studio server" in Docker
+SOLUTION: Change localhost:1234 to host.docker.internal:1234 in .env
+
+ISSUE: "Browser build cannot import Node.js builtin"
+SOLUTION: Add --target=node flag to bun build command
+
+ISSUE: Tests pass on host but fail in Docker
+SOLUTION: Check .env configuration differences (localhost vs host.docker.internal)
+
+ISSUE: Docker container doesn't have jq after rebuild
+SOLUTION: Verify jq is in Dockerfile, check build logs
+
+================================================================================
+REFERENCE DOCUMENTS
+================================================================================
+
+Related files:
+- test-complete.sh (test suite that needs jq)
+- .env (environment configuration)
+- .env.example (configuration template)
+- README.md (documentation)
+- Dockerfile (Docker image definition - need to locate)
+
+Docker networking:
+- host.docker.internal: Special DNS name to reach host from container
+- localhost: Refers to container itself, not host
+- Only works on Docker Desktop (Mac/Windows), not Linux
+
+Bun documentation:
+- Build targets: https://bun.sh/docs/bundler
+- --target=node: Build for Node.js environment
+- --target=bun: Build for Bun runtime
+
+================================================================================
+END OF TODO
+================================================================================

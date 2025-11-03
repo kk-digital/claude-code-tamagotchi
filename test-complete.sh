@@ -376,11 +376,11 @@ print_header "APPLICATION INTEGRATION TESTS"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 print_test "Check TypeScript compiles"
 if command -v bun > /dev/null 2>&1; then
-    if bun build src/index.ts --outdir /tmp/test-build > /dev/null 2>&1; then
+    if bun build src/index.ts --outdir /tmp/test-build --target=node > /dev/null 2>&1; then
         pass
         rm -rf /tmp/test-build
     else
-        fail "TypeScript compilation failed" "Run: bun build src/index.ts to see errors"
+        fail "TypeScript compilation failed" "Run: bun build src/index.ts --target=node to see errors"
     fi
 else
     warn "Skipping TypeScript compilation test (bun not available)"
