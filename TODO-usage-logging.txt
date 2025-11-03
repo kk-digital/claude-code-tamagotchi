@@ -43,11 +43,46 @@ REQUIREMENTS
      - "No write permissions for auto-updates (requires sudo)"
      - "Installation config mismatch: running npm-global but config says unknown"
 
-4. FILE FORMAT
-   - JSONL (JSON Lines) format - one JSON object per line
+4. FILE FORMAT AND STORAGE OPTIONS
+
+   DECISION REQUIRED: Choose storage backend
+
+   Option A: JSONL Log Files (Append-Only)
+   - Format: JSONL (JSON Lines) - one JSON object per line
    - Files: usage.jsonl, status.jsonl, diagnostics.jsonl
-   - Location: ~/.claude/pets/logs/ or configurable
+   - Location: ~/.claude/pets/logs/ or /data/ directory
    - Rotation: Optional log rotation by size/date
+   - Pros: Simple, human-readable, grep/jq friendly, no schema management
+   - Cons: No indexing, slower queries on large files, no transactions
+
+   Option B: SQLite Database
+   - Format: SQLite database file
+   - File: ~/.claude/pets/logs/usage.db or /data/usage.db
+   - Tables: usage_logs, status_logs, diagnostics
+   - Pros: Indexed queries, faster filtering, structured schema, SQL support
+   - Cons: Requires schema migrations, binary format, needs SQLite library
+
+   Option C: Hybrid Approach
+   - Use existing FeedbackDatabase (SQLite) for structured data
+   - Add new tables: usage_logs, status_logs, system_diagnostics
+   - Reuse database infrastructure (FeedbackDatabase class)
+   - Location: Same as feedback.db (~/.claude/pets/feedback.db)
+   - Pros: Leverage existing code, single database, structured queries
+   - Cons: Mixes concerns (feedback + usage logging)
+
+   RECOMMENDATION: Option A (JSONL) for initial implementation
+   - Simpler to implement (no schema management)
+   - Easy to parse with standard tools (jq, grep, awk)
+   - Can migrate to SQLite later if needed
+   - Aligns with append-only logging pattern
+   - /data/ directory for containerized deployments
+   - ~/.claude/pets/logs/ for local installations
+
+   STORAGE LOCATION OPTIONS:
+   - ~/.claude/pets/logs/ (default for local installations)
+   - /data/logs/ (for Docker/containerized deployments)
+   - Configurable via PET_LOG_DIR environment variable
+   - Auto-detect: Use /data/ if exists and writable, else ~/.claude/pets/logs/
 
 5. DATA STRUCTURE
    usage.jsonl line format:
@@ -139,12 +174,25 @@ Phase 1: Data Collection Infrastructure
 [ ] Parse diagnostic warnings and config mismatches
 [ ] Handle command execution errors
 
-Phase 2: JSONL File Writing
-[ ] Create log directory (~/.claude/pets/logs/)
-[ ] Implement JSONL append function
-[ ] Add file rotation logic (optional)
-[ ] Handle write errors gracefully
-[ ] Ensure atomic writes
+Phase 2: Storage Implementation
+[ ] DECISION: Choose storage backend (JSONL vs SQLite vs Hybrid)
+[ ] If JSONL:
+    [ ] Create log directory (auto-detect /data/ or ~/.claude/pets/logs/)
+    [ ] Implement JSONL append function
+    [ ] Add file rotation logic (optional)
+    [ ] Handle write errors gracefully
+    [ ] Ensure atomic writes
+[ ] If SQLite:
+    [ ] Design database schema (tables, indexes)
+    [ ] Create migration system
+    [ ] Implement UsageDatabase class (similar to FeedbackDatabase)
+    [ ] Add INSERT operations
+    [ ] Add query/filtering operations
+[ ] If Hybrid:
+    [ ] Extend FeedbackDatabase with new tables
+    [ ] Add schema migrations for usage_logs, status_logs, diagnostics
+    [ ] Reuse existing database connection pool
+    [ ] Keep feedback and usage data separate logically
 
 Phase 3: Timing and Scheduling
 [ ] Track last usage log time
@@ -164,9 +212,13 @@ Phase 5: Configuration
     - PET_USAGE_LOGGING_ENABLED (default: false)
     - PET_USAGE_LOG_INTERVAL (default: 60000ms)
     - PET_STATUS_LOG_INTERVAL (default: 3600000ms)
-    - PET_LOG_DIR (default: ~/.claude/pets/logs/)
-[ ] Document in .env.example
-[ ] Update README.md
+    - PET_LOG_DIR (default: auto-detect /data/ or ~/.claude/pets/logs/)
+    - PET_LOG_STORAGE_TYPE (default: jsonl, options: jsonl, sqlite, hybrid)
+    - PET_LOG_MAX_SIZE (default: 10MB, for JSONL rotation)
+    - PET_LOG_MAX_FILES (default: 10, for JSONL rotation)
+[ ] Document in .env.example (add all new variables)
+[ ] Update README.md (explain storage options)
+[ ] Ensure keys/values documented in config
 
 Phase 6: Testing
 [ ] Test usage logging (1 minute intervals)
@@ -246,15 +298,26 @@ Scenarios to handle:
    - Skip this interval
    - Continue on next interval
 
-3. File write error
+3. File write error (JSONL)
    - Log to stderr
+   - Retry with backoff
+   - Disable logging if persistent failures
+   - Check if /data/ directory is writable
+   - Fallback to ~/.claude/pets/logs/ if /data/ fails
+
+3b. Database write error (SQLite)
+   - Log to stderr
+   - Check database file permissions
+   - Verify schema is up to date
    - Retry with backoff
    - Disable logging if persistent failures
 
 4. Permission errors
-   - Create log directory if missing
-   - Check write permissions
-   - Provide clear error message
+   - Create log directory if missing (/data/logs/ or ~/.claude/pets/logs/)
+   - Check write permissions on directory
+   - Check write permissions on files
+   - Provide clear error message with path
+   - Document required permissions in error message
 
 5. Disk space errors
    - Implement log rotation
@@ -274,15 +337,30 @@ PET_USAGE_LOGGING_ENABLED=false        # default: false
 PET_USAGE_LOG_INTERVAL=60000           # ms, default: 60000 (1 minute)
 PET_STATUS_LOG_INTERVAL=3600000        # ms, default: 3600000 (1 hour)
 
-# Log file location
-PET_LOG_DIR=~/.claude/pets/logs/       # default: ~/.claude/pets/logs/
+# Storage backend selection
+PET_LOG_STORAGE_TYPE=jsonl             # default: jsonl, options: jsonl, sqlite, hybrid
 
-# Log rotation
+# Log file location (auto-detects /data/ or ~/.claude/pets/logs/)
+PET_LOG_DIR=                           # default: auto-detect
+                                       # auto-detect: /data/logs/ if writable, else ~/.claude/pets/logs/
+                                       # explicit: /custom/path/to/logs/
+
+# Log rotation (JSONL only)
 PET_LOG_MAX_SIZE=10485760              # bytes, default: 10MB
 PET_LOG_MAX_FILES=10                   # default: 10 files
 
+# Database options (SQLite only)
+PET_LOG_DB_PATH=                       # default: {PET_LOG_DIR}/usage.db
+
 # Debug
 PET_LOGGING_DEBUG=false                # default: false
+
+NOTES:
+- If PET_LOG_DIR not set, auto-detects:
+  1. Try /data/logs/ (containerized deployments)
+  2. Fallback to ~/.claude/pets/logs/ (local installations)
+- /data/ directory commonly used in Docker containers
+- ~/.claude/pets/logs/ for local development and testing
 
 ================================================================================
 DATA ANALYSIS USE CASES
