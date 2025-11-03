@@ -1,5 +1,6 @@
 import { LlmWrapper, LlmWrapperSettings } from './LlmWrapper';
 import { GroqProvider } from './providers/GroqProvider';
+import { LMStudioProvider } from './providers/LMStudioProvider';
 
 /**
  * Factory for creating LLM provider instances
@@ -7,7 +8,9 @@ import { GroqProvider } from './providers/GroqProvider';
  * This factory creates the appropriate provider (Groq, LM Studio, OpenAI)
  * based on the settings provided.
  *
- * Usage:
+ * Usage examples:
+ *
+ * Groq (cloud):
  *   const settings: LlmWrapperSettings = {
  *     provider: 'groq',
  *     model: 'openai/gpt-oss-20b',
@@ -15,6 +18,17 @@ import { GroqProvider } from './providers/GroqProvider';
  *     maxRetries: 2,
  *     groqSettings: {
  *       apiKey: process.env.GROQ_API_KEY
+ *     }
+ *   };
+ *
+ * LM Studio (local):
+ *   const settings: LlmWrapperSettings = {
+ *     provider: 'lmstudio',
+ *     model: 'openai/gpt-oss-120b',
+ *     timeout: 5000,
+ *     maxRetries: 1,
+ *     lmstudioSettings: {
+ *       url: 'http://localhost:1234/v1'
  *     }
  *   };
  *
@@ -35,8 +49,7 @@ export class LlmWrapperFactory {
         return new GroqProvider(settings);
 
       case 'lmstudio':
-        // Will be implemented in Phase 2B
-        throw new Error('LMStudioProvider not yet implemented - see Phase 2B');
+        return new LMStudioProvider(settings);
 
       case 'openai':
         // Future implementation
