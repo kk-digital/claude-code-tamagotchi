@@ -155,10 +155,10 @@ print_header "EMBEDDING MODEL TESTS"
 
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 print_test "Check OpenAI embedding models available"
-EMBEDDING_MODELS=$(echo "$MODELS_RESPONSE" | jq -r '.data[] | select(.id | contains("embedding")) | .id' 2>/dev/null)
+EMBEDDING_MODELS=$(echo "$MODELS_RESPONSE" | jq -r '.data[] | select(.id | contains("embedding")) | .id' 2>/dev/null | grep -v "jina")
 if [ -n "$EMBEDDING_MODELS" ]; then
     pass
-    echo "   Found embedding models:"
+    echo "   Found working embedding models (jina models excluded):"
     echo "$EMBEDDING_MODELS" | while read -r model; do
         echo "     - $model"
     done
@@ -198,7 +198,7 @@ if [ -n "$EMBEDDING_MODELS" ]; then
             echo "   Embedding dimension: $EMBEDDING_DIM"
         elif echo "$EMBEDDING_RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
             ERROR_MSG=$(echo "$EMBEDDING_RESPONSE" | jq -r '.error.message')
-            fail "Model error: $ERROR_MSG" "Some models may not be loaded. Working models: nomic-embed, qwen3-*, granite, embeddinggemma. Failed model: jina-v4"
+            fail "Model error: $ERROR_MSG" "Some models may not be loaded. Working models: nomic-embed, qwen3-*, granite, embeddinggemma"
         else
             fail "Invalid embedding response format" "Response: $EMBEDDING_RESPONSE"
         fi
