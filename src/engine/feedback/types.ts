@@ -123,6 +123,17 @@ export interface LLMAnalysisResult {
   project_context?: string;
   current_phase?: 'exploration' | 'planning' | 'implementation' | 'explanation' | 'verification';
   violation_check?: ViolationCheck;
+  violations: Array<{
+    type: string;
+    severity: string;
+    evidence: string;
+    recommendation: string;
+  }>;
+  pet_response: {
+    mood_change: number | null;
+    stat_changes: Record<string, number>;
+    thought: string | null;
+  };
 }
 
 export interface FeedbackConfig {
@@ -138,4 +149,11 @@ export interface FeedbackConfig {
   groqModel: string;
   groqTimeout: number;
   groqMaxRetries: number;
+  llmProvider: 'groq' | 'lmstudio' | 'auto';
+  lmstudioEnabled: boolean;
+  lmstudioUrl: string;
+  lmstudioModel: string;
+  lmstudioApiKey?: string;
+  lmstudioTimeout: number;
+  lmstudioMaxRetries: number;
 }

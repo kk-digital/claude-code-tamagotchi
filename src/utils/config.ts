@@ -61,6 +61,13 @@ export interface Config {
   groqModel: string;
   groqTimeout: number;
   groqMaxRetries: number;
+  llmProvider: 'groq' | 'lmstudio' | 'auto';
+  lmstudioEnabled: boolean;
+  lmstudioUrl: string;
+  lmstudioModel: string;
+  lmstudioApiKey?: string;
+  lmstudioTimeout: number;
+  lmstudioMaxRetries: number;
   moodDecayRate: number;
   annoyedThreshold: number;
   angryThreshold: number;
@@ -126,6 +133,13 @@ export const config: Config = {
   groqModel: process.env.PET_GROQ_MODEL || 'openai/gpt-oss-20b',
   groqTimeout: parseInt(process.env.PET_GROQ_TIMEOUT || '2000'),
   groqMaxRetries: parseInt(process.env.PET_GROQ_MAX_RETRIES || '2'),
+  llmProvider: (process.env.PET_LLM_PROVIDER as any) || 'auto',
+  lmstudioEnabled: process.env.LM_STUDIO_ENABLED === 'true',
+  lmstudioUrl: process.env.LM_STUDIO_URL || 'http://localhost:1234/v1',
+  lmstudioModel: process.env.LM_STUDIO_MODEL || 'openai/gpt-oss-120b',
+  lmstudioApiKey: process.env.LM_STUDIO_API_KEY,
+  lmstudioTimeout: parseInt(process.env.PET_LM_STUDIO_TIMEOUT || '5000'),
+  lmstudioMaxRetries: parseInt(process.env.PET_LM_STUDIO_MAX_RETRIES || '1'),
   moodDecayRate: parseInt(process.env.PET_MOOD_DECAY_RATE || '5'),
   annoyedThreshold: parseInt(process.env.PET_ANNOYED_THRESHOLD || '3'),
   angryThreshold: parseInt(process.env.PET_ANGRY_THRESHOLD || '5'),
@@ -155,4 +169,57 @@ export function getWeatherEffects() {
     cloudy: { energy: -0.05, happiness: -0.05 }
   };
   return effects[config.weather] || { happiness: 0, energy: 0 };
+}
+
+/**
+ * Build LlmWrapperSettings from Config
+ *
+ * This helper creates the settings object for LlmWrapperFactory based on
+ * the current configuration. It implements the auto provider selection logic:
+ * 1. If explicit provider specified, use it
+ * 2. If 'auto', prefer LM Studio if enabled, fall back to Groq
+ *
+ * @param cfg - Config object (defaults to global config)
+ * @returns LlmWrapperSettings for creating LLM provider instances
+ */
+export function buildLlmWrapperSettings(cfg: Config = config) {
+  // Import LlmWrapperFactory for selectProvider helper
+  const { LlmWrapperFactory } = require('../llm/LlmWrapperFactory');
+
+  // Determine which provider to use
+  const selectedProvider = LlmWrapperFactory.selectProvider(
+    cfg.llmProvider,
+    cfg.lmstudioEnabled,
+    cfg.groqApiKey
+  );
+
+  // If no provider available, throw error
+  if (!selectedProvider) {
+    throw new Error('No LLM provider available. Either enable LM Studio or provide Groq API key.');
+  }
+
+  // Build settings object based on selected provider
+  const settings: any = {
+    provider: selectedProvider,
+    model: selectedProvider === 'groq' ? cfg.groqModel : cfg.lmstudioModel,
+    timeout: selectedProvider === 'groq' ? cfg.groqTimeout : cfg.lmstudioTimeout,
+    maxRetries: selectedProvider === 'groq' ? cfg.groqMaxRetries : cfg.lmstudioMaxRetries,
+    dbPath: cfg.feedbackDbPath
+  };
+
+  // Add provider-specific settings
+  if (selectedProvider === 'groq') {
+    settings.groqSettings = {
+      apiKey: cfg.groqApiKey,
+      model: cfg.groqModel
+    };
+  } else if (selectedProvider === 'lmstudio') {
+    settings.lmstudioSettings = {
+      url: cfg.lmstudioUrl,
+      model: cfg.lmstudioModel,
+      apiKey: cfg.lmstudioApiKey
+    };
+  }
+
+  return settings;
 }
