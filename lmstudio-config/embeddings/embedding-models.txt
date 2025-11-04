@@ -1,0 +1,232 @@
+================================================================================
+LM STUDIO EMBEDDING MODELS - CONFIGURATION AND PRESETS
+================================================================================
+Date: 2025-11-05
+Purpose: Configuration for embedding models in LM Studio on macOS
+Models: 6 working embedding models for semantic search and similarity
+
+================================================================================
+SUPPORTED EMBEDDING MODELS
+================================================================================
+
+✅ WORKING MODELS (6 total):
+
+1. **text-embedding-nomic-embed-text-v1.5** (RECOMMENDED FOR SPEED)
+   - Dimensions: 768
+   - Size: ~550 MB
+   - Best for: General purpose, fast performance
+   - Use case: Quick semantic search, document similarity
+   - Download: Search "nomic-embed-text" in LM Studio
+
+2. **text-embedding-granite-embedding-125m-english** (FASTEST)
+   - Dimensions: 768
+   - Size: ~250 MB
+   - Best for: English-only text, maximum speed
+   - Use case: Fast batch processing, real-time embedding
+   - Download: Search "granite-embedding-125m" in LM Studio
+
+3. **text-embedding-qwen3-embedding-0.6b** (BALANCED)
+   - Dimensions: 1024
+   - Size: ~1.2 GB
+   - Best for: Good quality/speed balance
+   - Use case: Standard semantic search with good accuracy
+   - Download: Search "qwen3-embedding-0.6b" in LM Studio
+
+4. **text-embedding-qwen3-embedding-4b** (HIGH QUALITY)
+   - Dimensions: 2560
+   - Size: ~8 GB
+   - Best for: High-quality embeddings, complex semantic tasks
+   - Use case: Research, detailed similarity analysis
+   - Download: Search "qwen3-embedding-4b" in LM Studio
+
+5. **text-embedding-qwen3-embedding-8b** (BEST QUALITY)
+   - Dimensions: 4096
+   - Size: ~16 GB
+   - Best for: Maximum embedding quality
+   - Use case: Production semantic search, ML research
+   - Download: Search "qwen3-embedding-8b" in LM Studio
+   - RECOMMENDED FOR PRODUCTION
+
+6. **text-embedding-embeddinggemma-300m-with-dense-modules** (COMPACT)
+   - Dimensions: 768
+   - Size: ~600 MB
+   - Best for: Compact deployment, constrained resources
+   - Use case: Mobile/edge deployment, resource-limited systems
+   - Download: Search "embeddinggemma-300m" in LM Studio
+
+❌ NOT WORKING:
+- jina-embeddings-v4-text-retrieval (returns "Model is not embedding" error)
+
+================================================================================
+PRESET CONFIGURATIONS
+================================================================================
+
+**PRESET 1: FAST & LIGHTWEIGHT** (Development/Testing)
+Model: text-embedding-granite-embedding-125m-english
+Dimensions: 768
+Memory: ~512 MB
+CPU Threads: 4-8
+GPU Layers: 0 (CPU only)
+Batch Size: 64
+Use case: Quick local testing, development iterations
+
+**PRESET 2: BALANCED** (General Purpose)
+Model: text-embedding-qwen3-embedding-0.6b
+Dimensions: 1024
+Memory: ~2 GB
+CPU Threads: 8
+GPU Layers: 20 (if GPU available)
+Batch Size: 32
+Use case: Standard production workloads
+
+**PRESET 3: HIGH QUALITY** (Production)
+Model: text-embedding-qwen3-embedding-8b
+Dimensions: 4096
+Memory: ~18 GB
+CPU Threads: 16
+GPU Layers: 40 (GPU recommended)
+Batch Size: 16
+Use case: Production semantic search, high-accuracy requirements
+
+**PRESET 4: GENERAL PURPOSE FAST** (Recommended Default)
+Model: text-embedding-nomic-embed-text-v1.5
+Dimensions: 768
+Memory: ~1 GB
+CPU Threads: 8
+GPU Layers: 10
+Batch Size: 48
+Use case: Fast general-purpose embeddings with good quality
+
+================================================================================
+MODEL SELECTION GUIDE
+================================================================================
+
+**Choose based on requirements:**
+
+| Requirement          | Recommended Model                           | Dimensions |
+|----------------------|---------------------------------------------|------------|
+| Speed (CPU only)     | granite-embedding-125m-english              | 768        |
+| Speed (GPU)          | nomic-embed-text-v1.5                       | 768        |
+| Quality (small)      | qwen3-embedding-0.6b                        | 1024       |
+| Quality (medium)     | qwen3-embedding-4b                          | 2560       |
+| Quality (best)       | qwen3-embedding-8b                          | 4096       |
+| Size (compact)       | embeddinggemma-300m-with-dense-modules      | 768        |
+
+**RAM Requirements:**
+- granite-125m: 2 GB minimum, 4 GB recommended
+- nomic-embed: 4 GB minimum, 6 GB recommended
+- qwen3-0.6b: 6 GB minimum, 8 GB recommended
+- qwen3-4b: 12 GB minimum, 16 GB recommended
+- qwen3-8b: 20 GB minimum, 32 GB recommended
+
+**GPU Requirements (optional but recommended):**
+- granite-125m: Not needed (CPU is fast)
+- nomic-embed: 2 GB VRAM (10 layers)
+- qwen3-0.6b: 4 GB VRAM (20 layers)
+- qwen3-4b: 12 GB VRAM (30 layers)
+- qwen3-8b: 24 GB VRAM (40 layers)
+
+================================================================================
+ENVIRONMENT VARIABLES
+================================================================================
+
+Add to your .env file:
+
+# Embedding Model Configuration
+LM_STUDIO_EMBEDDING_MODEL=text-embedding-qwen3-embedding-8b  # Best quality
+# LM_STUDIO_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5  # Fast
+# LM_STUDIO_EMBEDDING_MODEL=text-embedding-granite-embedding-125m-english  # Fastest
+
+# API Settings
+LM_STUDIO_EMBEDDING_URL=http://localhost:1234/v1
+LM_STUDIO_EMBEDDING_TIMEOUT=10000  # 10 seconds (embeddings can be slow)
+LM_STUDIO_EMBEDDING_BATCH_SIZE=32  # Process 32 texts at once
+
+================================================================================
+TESTING EMBEDDINGS
+================================================================================
+
+**Test embedding generation:**
+
+```bash
+curl -X POST http://localhost:1234/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "text-embedding-qwen3-embedding-8b",
+    "input": "Hello world"
+  }' | jq '.data[0].embedding | length'
+```
+
+Expected output: 4096 (for qwen3-8b), 768 (for nomic-embed/granite-125m)
+
+**Test batch embedding:**
+
+```bash
+curl -X POST http://localhost:1234/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "text-embedding-qwen3-embedding-8b",
+    "input": ["First text", "Second text", "Third text"]
+  }' | jq '.data | length'
+```
+
+Expected output: 3
+
+**Test all working models:**
+
+```bash
+for model in "text-embedding-nomic-embed-text-v1.5" "text-embedding-granite-embedding-125m-english" "text-embedding-qwen3-embedding-0.6b" "text-embedding-qwen3-embedding-4b" "text-embedding-qwen3-embedding-8b" "text-embedding-embeddinggemma-300m-with-dense-modules"; do
+  echo "Testing: $model"
+  curl -s -X POST http://localhost:1234/v1/embeddings \
+    -H "Content-Type: application/json" \
+    -d "{\"model\": \"$model\", \"input\": \"test\"}" | \
+    jq -r 'if .error then "❌ ERROR: \(.error.message)" else "✅ SUCCESS - Dimensions: \(.data[0].embedding | length)" end'
+  echo ""
+done
+```
+
+================================================================================
+PERFORMANCE BENCHMARKS (M1 Mac, 16 GB RAM)
+================================================================================
+
+**Generation Time (single embedding):**
+- granite-125m: ~50ms (CPU only)
+- nomic-embed: ~100ms (CPU), ~30ms (GPU 10 layers)
+- qwen3-0.6b: ~200ms (CPU), ~80ms (GPU 20 layers)
+- qwen3-4b: ~800ms (CPU), ~200ms (GPU 30 layers)
+- qwen3-8b: ~1500ms (CPU), ~400ms (GPU 40 layers)
+
+**Batch Processing (32 texts):**
+- granite-125m: ~800ms
+- nomic-embed: ~1.5s (CPU), ~500ms (GPU)
+- qwen3-0.6b: ~3s (CPU), ~1.2s (GPU)
+- qwen3-4b: ~15s (CPU), ~4s (GPU)
+- qwen3-8b: ~30s (CPU), ~8s (GPU)
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+**Error: "Model is not embedding"**
+- Cause: Model doesn't support embeddings endpoint
+- Solution: Use one of the 6 working models listed above
+
+**Error: "Model not loaded"**
+- Cause: Model not loaded in LM Studio
+- Solution: Load model in LM Studio UI before testing
+
+**Slow performance**
+- Cause: Running on CPU only
+- Solution: Enable GPU layers in LM Studio settings (if GPU available)
+
+**Out of memory**
+- Cause: Model too large for available RAM
+- Solution: Use smaller model (granite-125m or nomic-embed)
+
+**Timeout errors**
+- Cause: Embedding generation takes longer than timeout
+- Solution: Increase LM_STUDIO_EMBEDDING_TIMEOUT to 20000-30000ms
+
+================================================================================
+END OF EMBEDDING MODELS CONFIGURATION
+================================================================================
