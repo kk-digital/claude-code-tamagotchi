@@ -1,4 +1,4 @@
-import { LlmWrapper, LlmWrapperSettings, LlmResponse } from './LlmWrapper';
+import { LlmWrapper, LlmWrapperSettings, LlmResponse } from './llm_wrapper';
 
 /**
  * Abstract base class for HTTP-based LLM providers

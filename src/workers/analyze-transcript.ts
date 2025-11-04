@@ -7,8 +7,8 @@
 
 import { FeedbackDatabase } from '../c1_feedback_database/feedback_database';
 import { MessageProcessor } from '../engine/feedback/MessageProcessor';
-import { LlmWrapperFactory } from '../llm/LlmWrapperFactory';
-import { LlmWrapperSettings } from '../llm/LlmWrapper';
+import { LlmWrapperFactory } from '../c1_llm_factory/llm_wrapper_factory';
+import { LlmWrapperSettings } from '../c1_llm_client/llm_wrapper';
 import {
   TranscriptMessage,
   MessageMetadata,
