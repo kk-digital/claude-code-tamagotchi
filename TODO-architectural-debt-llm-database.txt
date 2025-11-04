@@ -1,0 +1,271 @@
+================================================================================
+TODO: Architectural Debt - LLM Layer Database Dependency
+================================================================================
+Date: 2025-11-04
+Priority: MEDIUM - Technical debt, not blocking
+Status: DOCUMENTED
+
+================================================================================
+ISSUE: Layer Violation - c1 imports c2
+================================================================================
+
+**Architecture Validator Error:**
+```
+❌ Layer Dependency Violations:
+   src/c1_llm_client/groq_client.ts: c1 layer imports c2 layer (src/c2_pet_feedback/feedback_database)
+   src/c1_llm_client/llm_wrapper.ts: c1 layer imports c2 layer (src/c2_pet_feedback/feedback_database)
+```
+
+**Problem:**
+- c1_llm_client (Foundation layer) is importing from c2_pet_feedback (Services layer)
+- This violates the layer dependency rule: c1 should only import stdlib + external packages
+- Specifically, LlmWrapper and GroqClient create FeedbackDatabase instances directly
+
+**Affected Files:**
+1. src/c1_llm_client/llm_wrapper.ts:2 - imports FeedbackDatabase
+2. src/c1_llm_client/llm_wrapper.ts:64 - declares protected db: FeedbackDatabase
+3. src/c1_llm_client/llm_wrapper.ts:74 - creates new FeedbackDatabase(...)
+4. src/c1_llm_client/groq_client.ts:3 - imports FeedbackDatabase
+5. src/c1_llm_client/groq_client.ts:10 - declares private db: FeedbackDatabase
+6. src/c1_llm_client/groq_client.ts:34 - creates new FeedbackDatabase(...)
+
+================================================================================
+ROOT CAUSE
+================================================================================
+
+The LLM clients were designed to optionally log their analysis results to the
+feedback database. This creates a dependency from the generic LLM infrastructure
+(c1) to the pet-specific feedback system (c2).
+
+Current design:
+```typescript
+// c1_llm_client/llm_wrapper.ts
+protected db: FeedbackDatabase | null = null;
+
+constructor(settings: LlmWrapperSettings) {
+  if (settings.dbPath) {
+    this.db = new FeedbackDatabase(settings.dbPath, 50);
+  }
+}
+```
+
+This violates dependency inversion:
+- High-level module (c1 infrastructure) depends on low-level module (c2 service)
+- c1 shouldn't know about c2 at all
+
+================================================================================
+WHY THIS EXISTS
+================================================================================
+
+The database integration was added to allow LLM providers to optionally cache/log
+their results for feedback analysis. This made sense functionally but created
+an architectural violation.
+
+**Functional requirement**: LLM providers need to store analysis results
+
+**Implementation choice**: Direct database instantiation
+
+**Problem**: Couples generic LLM infrastructure to pet-specific feedback database
+
+================================================================================
+CORRECT SOLUTION: Dependency Injection
+================================================================================
+
+**Option 1: Constructor Injection (Recommended)**
+
+Move database creation to the caller (c2 or c3 layer):
+
+```typescript
+// c1_llm_client/llm_wrapper.ts
+protected db: FeedbackDatabase | null = null;
+
+constructor(settings: LlmWrapperSettings, db?: FeedbackDatabase) {
+  // ... other initialization
+  this.db = db || null; // Accept database from caller
+}
+
+// c2_pet_feedback/feedback_service.ts (caller)
+const db = new FeedbackDatabase(config.dbPath, 50);
+const llm = LlmWrapperFactory.create(settings, db); // Inject database
+```
+
+**Benefits:**
+- c1_llm_client no longer imports from c2
+- Dependency inverted: c2 provides database to c1
+- c1 remains generic (could use any database interface)
+- Testability: easier to mock database
+
+**Option 2: Interface Abstraction**
+
+Define database interface in c1, implement in c2:
+
+```typescript
+// c1_llm_client/llm_database_interface.ts
+export interface LlmDatabase {
+  saveAnalysis(result: LLMAnalysisResult): Promise<void>;
+  getAnalysis(id: string): Promise<LLMAnalysisResult | null>;
+}
+
+// c1_llm_client/llm_wrapper.ts
+protected db: LlmDatabase | null = null;
+
+constructor(settings: LlmWrapperSettings, db?: LlmDatabase) {
+  this.db = db || null;
+}
+
+// c2_pet_feedback/feedback_database.ts
+export class FeedbackDatabase implements LlmDatabase {
+  // ... existing implementation
+  async saveAnalysis(result: LLMAnalysisResult): Promise<void> { ... }
+  async getAnalysis(id: string): Promise<LLMAnalysisResult | null> { ... }
+}
+```
+
+**Benefits:**
+- c1 defines interface (Dependency Inversion Principle)
+- c2 implements interface
+- No layer violation
+- Even more testable (interface-based mocking)
+
+**Option 3: Remove Database from LLM Clients**
+
+Move all database logic to c2_pet_feedback:
+
+```typescript
+// c1_llm_client/llm_wrapper.ts
+// Remove all database references
+
+// c2_pet_feedback/feedback_service.ts
+async analyzeWithLLM(text: string): Promise<LLMAnalysisResult> {
+  const llm = LlmWrapperFactory.create(settings);
+  const result = await llm.analyze(text);
+
+  // Save to database at c2 level
+  await this.db.saveAnalysis(result);
+
+  return result;
+}
+```
+
+**Benefits:**
+- Cleanest separation of concerns
+- c1 is pure LLM infrastructure
+- c2 handles all feedback/database logic
+- No layer violation
+
+**Drawbacks:**
+- Might duplicate some logic if multiple c2 services use LLM
+
+================================================================================
+RECOMMENDATION
+================================================================================
+
+**Phase 1 (Short-term): Accept as Technical Debt**
+- Document this violation (this file)
+- Continue with refactoring
+- Mark as known issue in architecture validator
+
+**Phase 2 (Future Cleanup): Implement Option 1 or 3**
+- Prefer Option 3 (remove database from LLM clients) if only used by feedback
+- Use Option 1 (constructor injection) if multiple c2 services need database
+- Option 2 adds unnecessary complexity for this use case
+
+**Estimated effort**: 2-4 hours
+- Update LlmWrapper/GroqClient/LMStudioProvider constructors
+- Update LlmWrapperFactory to accept optional database
+- Update all callers in c2_pet_feedback
+- Test and verify
+
+================================================================================
+IMPACT ANALYSIS
+================================================================================
+
+**Current Impact:**
+- Architectural: Layer violation exists but codebase still works
+- Functional: No functional issues
+- Testing: All 18/18 tests passing
+- Maintainability: Creates coupling between c1 and c2
+
+**Impact if NOT fixed:**
+- Cannot reuse c1_llm_client in non-pet contexts (couples to pet feedback)
+- Harder to test LLM clients in isolation
+- Violates three-layer architecture principle
+- Makes future modularization harder
+
+**Impact of fixing:**
+- Breaking change to LlmWrapper API (constructor signature changes)
+- Need to update all callers (currently only c2_pet_feedback)
+- Better architecture compliance
+- Improved testability
+
+================================================================================
+WORKAROUND (Interim)
+================================================================================
+
+Until this is fixed, the architecture validator will report this violation.
+
+We can either:
+1. Accept the warning and document as known issue
+2. Exclude these specific files from validation
+3. Fix immediately before merging
+
+**Recommendation**: Accept as documented technical debt, fix in future PR.
+
+================================================================================
+VALIDATION BYPASS (If Needed)
+================================================================================
+
+If we need to bypass validation for these files, modify
+scripts/validate_architecture.ts:
+
+```typescript
+// Add exception for LLM database dependency
+const KNOWN_VIOLATIONS = [
+  'c1_llm_client/llm_wrapper.ts → c2_pet_feedback/feedback_database',
+  'c1_llm_client/groq_client.ts → c2_pet_feedback/feedback_database'
+];
+
+function validateLayerDependencies(importInfos: ImportInfo[]): ValidationResult {
+  // ... existing code
+
+  // Skip known violations
+  if (KNOWN_VIOLATIONS.includes(`${info.file} → ${imp}`)) {
+    warnings.push(`${info.file}: Known violation (technical debt): ${imp}`);
+    continue;
+  }
+
+  // ... rest of validation
+}
+```
+
+But this is NOT recommended - better to fix properly or accept the error.
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Document this as known technical debt ✅ (this file)
+2. Continue with refactoring completion
+3. Schedule future cleanup task
+4. Create issue for Option 3 implementation (remove database from LLM)
+
+================================================================================
+RELATED FILES
+================================================================================
+
+Files that would need updating for Option 3 fix:
+- src/c1_llm_client/llm_wrapper.ts (remove database)
+- src/c1_llm_client/groq_client.ts (remove database)
+- src/c1_llm_client/llm_http_provider.ts (check if used)
+- src/c2_pet_feedback/feedback_system.ts (add database save)
+- src/c2_pet_feedback/feedback_worker.ts (add database save)
+
+Files that would need updating for Option 1 fix:
+- src/c1_llm_client/llm_wrapper.ts (add db parameter)
+- src/c1_llm_client/groq_client.ts (add db parameter)
+- src/c1_llm_factory/llm_wrapper_factory.ts (add db parameter)
+- All callers in c2_pet_feedback (pass database)
+
+================================================================================
+END OF TODO
+================================================================================
