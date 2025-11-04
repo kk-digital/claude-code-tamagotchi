@@ -1,6 +1,6 @@
-import { PetState } from './StateManager';
+import { PetState } from './state_manager';
 import { config, getWeatherEffects } from '../c1_config/config';
-import { thoughtSystem } from './ThoughtSystem';
+import { thoughtSystem } from '../c2_pet_thoughts/thought_system';
 
 const SESSION_GAP_THRESHOLD = 5 * 60 * 1000; // 5 minutes = new session
 const UPDATE_DECAY_INTERVAL = parseInt(process.env.PET_DECAY_INTERVAL || '20'); // Every N updates, decay stats (default 20)

@@ -1,4 +1,4 @@
-import { FeedbackDatabase } from '../../c1_pet_feedback_database/feedback_database';
+import { FeedbackDatabase } from './feedback_database';
 import { TranscriptMessage } from '../../c1_pet_feedback_models/feedback_types';
 import * as fs from 'fs';
 

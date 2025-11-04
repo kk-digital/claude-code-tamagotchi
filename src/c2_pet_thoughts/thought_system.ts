@@ -1,9 +1,9 @@
-import { PetState } from './StateManager';
-import { NeedThoughts } from './thoughts/needThoughts';
-import { ComboThoughts } from './thoughts/comboThoughts';
-import { CodingThoughts } from './thoughts/codingThoughts';
-import { RandomThoughts } from './thoughts/randomThoughts';
-import { ActionThoughts } from './thoughts/actionThoughts';
+import { PetState } from '../c2_pet_engine/state_manager';
+import { NeedThoughts } from './need_thoughts';
+import { ComboThoughts } from './combo_thoughts';
+import { CodingThoughts } from './coding_thoughts';
+import { RandomThoughts } from './random_thoughts';
+import { ActionThoughts } from './action_thoughts';
 
 // Thought category types
 export type ThoughtCategory = 'need' | 'combo' | 'coding' | 'random' | 'mood' | 'reactive';

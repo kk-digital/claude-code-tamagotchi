@@ -1,4 +1,4 @@
-import { PetState } from './StateManager';
+import { PetState } from './state_manager';
 import { config, getWeatherEffects } from '../c1_config/config';
 
 export class DecaySystem {

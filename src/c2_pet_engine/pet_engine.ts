@@ -1,7 +1,7 @@
-import { StateManager, PetState } from './StateManager';
-import { AnimationManager } from './AnimationManager';
-import { ActivitySystem } from './ActivitySystem';
-import { FeedbackSystem } from './feedback/FeedbackSystem';
+import { StateManager, PetState } from './state_manager';
+import { AnimationManager } from './animation_manager';
+import { ActivitySystem } from './activity_system';
+import { FeedbackSystem } from '../c2_pet_feedback/feedback_system';
 import { config } from '../c1_config/config';
 import * as fs from 'fs';
 

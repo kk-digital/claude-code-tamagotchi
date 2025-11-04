@@ -1,4 +1,4 @@
-import { PetState } from '../StateManager';
+import { PetState } from '../c2_pet_engine/state_manager';
 
 export class NeedThoughts {
   // Get thought based on need levels with escalation

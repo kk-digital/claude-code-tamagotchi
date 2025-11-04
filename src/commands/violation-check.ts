@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { FeedbackDatabase } from '../c1_pet_feedback_database/feedback_database';
+import { FeedbackDatabase } from '../c2_pet_feedback/feedback_database';
 import { ViolationRecord } from '../c1_pet_feedback_models/feedback_types';
 
 /**

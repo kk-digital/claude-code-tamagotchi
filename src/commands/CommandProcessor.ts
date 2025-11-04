@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { config } from '../c1_config/config';
-import { PetAction } from '../engine/PetEngine';
+import { PetAction } from '../c2_pet_engine/pet_engine';
 
 // Define valid foods and their emojis
 const VALID_FOODS: Record<string, string> = {
