@@ -1,0 +1,790 @@
+# Tamagotchi-Dev Modular Monolith Reorganization - Research Report
+
+## Executive Summary
+
+Analysis of the tamagotchi-dev codebase reveals 30 TypeScript files totaling 10,215 lines of code across 10 directories. The current nested structure has several architectural issues that the proposed modular monolith pattern will address. This report provides detailed analysis of file sizes, dependencies, circular dependency risks, and concrete migration recommendations.
+
+---
+
+## 1. Current File Structure Analysis
+
+### 1.1 File Inventory by Size
+
+Total files: 30 TypeScript files
+Total lines: 10,215 lines of code
+
+**Files by Size (sorted, largest first):**
+
+| File | Lines | Category | Splitting Need |
+|------|-------|----------|----------------|
+| src/llm/GroqClient.ts | 952 | Large | **HIGH** - Should be split |
+| src/llm/providers/GroqProvider.ts | 890 | Large | **HIGH** - Should be split |
+| src/llm/providers/LMStudioProvider.ts | 871 | Large | **HIGH** - Should be split |
+| src/workers/analyze-transcript.ts | 669 | Large | **MEDIUM** - Consider splitting |
+| src/engine/feedback/FeedbackDatabase.ts | 522 | Medium | **LOW** - Keep as-is |
+| src/engine/feedback/TranscriptAnalyzer.ts | 491 | Medium | **LOW** - Keep as-is |
+| src/engine/PetEngine.ts | 452 | Medium | **MEDIUM** - Extract models |
+| src/engine/thoughts/actionThoughts.ts | 441 | Medium | **LOW** - Keep as-is |
+| src/engine/ActivitySystem.ts | 380 | Medium | **LOW** - Keep as-is |
+| src/engine/feedback/MessageProcessor.ts | 359 | Medium | **LOW** - Keep as-is |
+| src/engine/StateManager.ts | 354 | Medium | **LOW** - Keep as-is |
+| src/engine/ThoughtSystem.ts | 345 | Medium | **LOW** - Keep as-is |
+| src/engine/thoughts/codingThoughts.ts | 321 | Small | **NONE** |
+| src/engine/thoughts/needThoughts.ts | 317 | Small | **NONE** |
+| src/engine/feedback/FeedbackSystem.ts | 307 | Medium | **LOW** - Keep as-is |
+| src/engine/thoughts/randomThoughts.ts | 299 | Small | **NONE** |
+| src/engine/thoughts/comboThoughts.ts | 279 | Small | **NONE** |
+| src/commands/CommandProcessor.ts | 267 | Small | **NONE** |
+| src/animations/index.ts | 237 | Small | **NONE** |
+| src/utils/config.ts | 216 | Small | **NONE** |
+| src/llm/LlmWrapper.ts | 210 | Small | **NONE** |
+| src/engine/AnimationManager.ts | 197 | Small | **NONE** |
+| src/engine/feedback/types.ts | 158 | Small | **NONE** |
+| src/engine/DecaySystem.ts | 148 | Small | **NONE** |
+| src/llm/LlmHttpProvider.ts | 144 | Small | **NONE** |
+| src/commands/violation-check.ts | 143 | Small | **NONE** |
+| src/index.ts | 134 | Small | **NONE** |
+| src/llm/LlmWrapperFactory.ts | 63 | Small | **NONE** |
+| src/commands/cli.ts | 35 | Small | **NONE** |
+| src/commands/pet-cli.ts | 14 | Small | **NONE** |
+
+### 1.2 Directory Structure
+
+Current nested structure:
+```
+src/
+├── animations/         (1 file,  237 lines)
+├── commands/           (4 files, 459 lines)
+├── engine/
+│   ├── feedback/      (5 files, 1,845 lines)
+│   └── thoughts/      (5 files, 1,657 lines)
+│   └── core/          (6 files, 1,876 lines)
+├── llm/
+│   └── providers/     (2 files, 1,761 lines)
+│   └── core/          (4 files, 1,369 lines)
+├── utils/             (1 file,  216 lines)
+└── workers/           (1 file,  669 lines)
+```
+
+**Issues with current structure:**
+1. Deep nesting (3 levels: engine/feedback/, llm/providers/)
+2. No clear layer separation (c1/c2/c3)
+3. Mixed concerns in single directories
+4. Unclear import hierarchy
+5. Difficult to understand dependencies
+
+---
+
+## 2. File Dependency Analysis
+
+### 2.1 Internal Import Graph
+
+**c1 Layer Candidates (Foundation - no internal imports):**
+- `src/utils/config.ts` - NO internal imports (pure foundation)
+- `src/engine/feedback/types.ts` - NO internal imports (pure types)
+- `src/animations/index.ts` - NO internal imports (pure data)
+
+**c2 Layer Candidates (Services - imports c1 only):**
+- `src/engine/StateManager.ts` → config (c1)
+- `src/engine/DecaySystem.ts` → StateManager, config
+- `src/engine/ActivitySystem.ts` → StateManager, config, ThoughtSystem
+- `src/engine/AnimationManager.ts` → StateManager, animations (c1), config
+- `src/engine/ThoughtSystem.ts` → StateManager, thoughts/* files
+- `src/engine/PetEngine.ts` → StateManager, AnimationManager, ActivitySystem, FeedbackSystem, config
+- `src/engine/feedback/FeedbackDatabase.ts` → types (c1)
+- `src/engine/feedback/MessageProcessor.ts` → FeedbackDatabase, types
+- `src/engine/feedback/TranscriptAnalyzer.ts` → FeedbackDatabase, MessageProcessor, types
+- `src/engine/feedback/FeedbackSystem.ts` → TranscriptAnalyzer, StateManager, config, types
+- `src/llm/LlmWrapper.ts` → types (c1), FeedbackDatabase
+- `src/llm/LlmHttpProvider.ts` → LlmWrapper
+- `src/llm/LlmWrapperFactory.ts` → LlmWrapper, GroqProvider, LMStudioProvider
+- `src/llm/providers/GroqProvider.ts` → types (c1), LlmWrapper
+- `src/llm/providers/LMStudioProvider.ts` → types (c1), LlmHttpProvider, LlmWrapper
+- `src/llm/GroqClient.ts` → types (c1), FeedbackDatabase
+
+**c3 Layer Candidates (Applications - imports c1+c2):**
+- `src/index.ts` → PetEngine (c2), config (c1)
+- `src/commands/CommandProcessor.ts` → config (c1), PetAction type (c2)
+- `src/commands/cli.ts` → CommandProcessor (c3)
+- `src/commands/pet-cli.ts` → CommandProcessor (c3)
+- `src/commands/violation-check.ts` → FeedbackDatabase (c2), types (c1)
+- `src/workers/analyze-transcript.ts` → FeedbackDatabase (c2), MessageProcessor (c2), LlmWrapperFactory (c2), LlmWrapper (c2), types (c1)
+
+### 2.2 External Package Dependencies
+
+**Runtime dependencies:**
+- `groq-sdk` - Groq API client (used in GroqProvider, GroqClient)
+- `bun:sqlite` - SQLite database (used in FeedbackDatabase)
+- `dotenv` - Environment variables (used in config)
+- Node.js built-ins:
+  - `fs` - File system operations (widespread)
+  - `path` - Path manipulation (widespread)
+  - `os` - Operating system info (FeedbackDatabase)
+  - `child_process` - Process spawning (TranscriptAnalyzer)
+
+**Development dependencies:**
+- TypeScript (compilation)
+- Bun runtime (execution)
+
+---
+
+## 3. Circular Dependency Analysis
+
+### 3.1 Potential Circular Dependencies
+
+**CRITICAL FINDING: No circular dependencies detected!**
+
+The current codebase has clean unidirectional dependencies. The import graph flows in one direction:
+
+```
+c1 (Foundation)
+  ↓
+c2 (Services)
+  ↓
+c3 (Applications)
+```
+
+**Dependency chains verified:**
+1. `types.ts` → (no imports) ✓
+2. `config.ts` → (no imports) ✓
+3. `animations/index.ts` → (no imports) ✓
+4. `StateManager.ts` → `config` ✓
+5. `FeedbackDatabase.ts` → `types` ✓
+6. `LlmWrapper.ts` → `types`, `FeedbackDatabase` ✓
+7. `FeedbackSystem.ts` → `TranscriptAnalyzer`, `StateManager`, `config`, `types` ✓
+8. `PetEngine.ts` → `StateManager`, `AnimationManager`, `ActivitySystem`, `FeedbackSystem`, `config` ✓
+9. `index.ts` → `PetEngine`, `config` ✓
+
+**Why no circular dependencies exist:**
+- Clear separation: types → database → services → engine → app
+- StateManager acts as central state container (imported by many, imports nothing)
+- FeedbackDatabase imported by LLM layer but doesn't import from LLM
+- Engine components depend on lower-level services but not vice versa
+
+### 3.2 Risk Areas for Future Circularity
+
+**Watch these during refactoring:**
+
+1. **LLM ↔ Feedback bidirectional imports**
+   - Current: LlmWrapper imports FeedbackDatabase ✓
+   - Risk: FeedbackDatabase might want to import LLM types
+   - Mitigation: Keep types in c1, use dependency injection
+
+2. **StateManager as god object**
+   - Current: Everyone imports StateManager, StateManager imports nothing ✓
+   - Risk: If StateManager starts importing engine components
+   - Mitigation: Keep StateManager pure (c1), extract business logic to c2
+
+3. **ThoughtSystem ↔ ActivitySystem potential**
+   - Current: ActivitySystem imports ThoughtSystem ✓
+   - Risk: ThoughtSystem might want activity data
+   - Mitigation: Pass data through method parameters, not imports
+
+---
+
+## 4. Files Requiring Splits
+
+### 4.1 HIGH PRIORITY SPLITS
+
+#### 4.1.1 src/llm/GroqClient.ts (952 lines)
+
+**Current concerns mixed:**
+- User message analysis (lines 48-100)
+- Exchange analysis (lines 200-400)
+- Violation checking (lines 500-700)
+- API communication (lines 100-200, 400-500, 700-900)
+- Retry logic and error handling (spread throughout)
+
+**Proposed split:**
+```
+c1_llm_client/
+  groq_client.ts (200 lines)
+    - Core Groq API communication
+    - Retry logic
+    - Timeout handling
+    - Error handling
+
+c1_llm_types/
+  groq_types.ts (50 lines)
+    - GroqSettings interface
+    - GroqResponse types
+    - Request/response types
+```
+
+**Benefits:**
+- Clearer separation of concerns
+- Easier to test API communication separately
+- Simpler to add new analysis types
+- Better code organization
+
+#### 4.1.2 src/llm/providers/GroqProvider.ts (890 lines)
+
+**Current concerns mixed:**
+- Provider initialization (lines 1-50)
+- User message analysis (lines 50-200)
+- Exchange analysis (lines 200-500)
+- Violation checking (lines 500-700)
+- Prompt building (lines 700-890)
+
+**Proposed split:**
+```
+c1_llm_providers/
+  groq_provider.ts (300 lines)
+    - GroqProvider class
+    - Core provider interface implementation
+    - API integration
+
+c2_llm_analysis/
+  groq_analyzer.ts (400 lines)
+    - Analysis methods
+    - Prompt building
+    - Response parsing
+
+c1_llm_prompts/
+  groq_prompts.ts (190 lines)
+    - Prompt templates
+    - Prompt building helpers
+```
+
+**Benefits:**
+- Provider logic separated from analysis logic
+- Prompts can be modified without touching provider
+- Analysis logic can be reused across providers
+- Better testability
+
+#### 4.1.3 src/llm/providers/LMStudioProvider.ts (871 lines)
+
+**Current concerns mixed:**
+- Same issues as GroqProvider
+- HTTP provider base class extension
+- LM Studio-specific configuration
+
+**Proposed split:**
+```
+c1_llm_providers/
+  lmstudio_provider.ts (300 lines)
+    - LMStudioProvider class
+    - HTTP provider base integration
+    - Configuration
+
+c2_llm_analysis/
+  lmstudio_analyzer.ts (400 lines)
+    - Analysis methods (similar to groq)
+    - Response parsing
+
+c1_llm_prompts/
+  lmstudio_prompts.ts (171 lines)
+    - Prompt templates (may share with Groq)
+```
+
+**Benefits:**
+- Consistent structure with GroqProvider
+- Shared analysis logic can be extracted to common module
+- Easier to add new LM Studio features
+
+### 4.2 MEDIUM PRIORITY SPLITS
+
+#### 4.2.1 src/workers/analyze-transcript.ts (669 lines)
+
+**Current concerns:**
+- Worker process setup (lines 1-100)
+- Message processing loop (lines 100-300)
+- LLM analysis orchestration (lines 300-500)
+- Database operations (lines 500-669)
+
+**Proposed split:**
+```
+c2_feedback_service/
+  feedback_worker.ts (300 lines)
+    - Worker process setup
+    - Message processing loop
+    - Main worker logic
+
+c2_feedback_service/
+  worker_orchestrator.ts (200 lines)
+    - LLM analysis orchestration
+    - Batch processing
+
+c2_feedback_service/
+  worker_database.ts (169 lines)
+    - Database operations
+    - Lock management
+```
+
+**Benefits:**
+- Clearer separation of worker concerns
+- Easier to test orchestration logic
+- Database operations isolated
+
+#### 4.2.2 src/engine/PetEngine.ts (452 lines)
+
+**Current concerns:**
+- Pet state models (PetAction interface, lines 8-12)
+- Engine initialization (lines 14-32)
+- Update loop (lines 34-100)
+- Action processing (lines 102-175)
+- Action handlers (lines 177-276)
+- Display generation (lines 284-369)
+- Stats generation (lines 371-423)
+
+**Proposed split:**
+```
+c1_pet_models/
+  pet_actions.ts (50 lines)
+    - PetAction interface
+    - Action types
+    - Action validation
+
+c2_pet_engine/
+  pet_engine.ts (250 lines)
+    - PetEngine class (orchestration only)
+    - Update loop
+    - Action dispatching
+
+c2_pet_engine/
+  pet_action_handlers.ts (100 lines)
+    - handleFeed()
+    - handlePet()
+    - handlePlay()
+    - handleSleep()
+    - handleWake()
+    - handleClean()
+    - handleHeal()
+    - handleTrick()
+
+c3_statusline_display/
+  pet_display.ts (52 lines)
+    - getDisplay() method
+    - getMoodEmoji() helper
+    - Display formatting
+```
+
+**Benefits:**
+- Models cleanly separated (c1)
+- Engine orchestration focused
+- Action handlers isolated and testable
+- Display logic in presentation layer (c3)
+
+### 4.3 LOW PRIORITY (No Split Needed)
+
+These files are appropriately sized and focused:
+- src/engine/feedback/FeedbackDatabase.ts (522 lines) - Database layer, good size
+- src/engine/feedback/TranscriptAnalyzer.ts (491 lines) - Single responsibility
+- src/engine/thoughts/*.ts (279-441 lines each) - Domain-specific logic
+- src/engine/ActivitySystem.ts (380 lines) - Cohesive system
+- All files under 300 lines - appropriate size
+
+---
+
+## 5. Detailed File Mapping (Current → Proposed)
+
+### 5.1 Layer c1: Foundation Packages
+
+#### c1_config (Configuration)
+```
+Current → Proposed
+src/utils/config.ts → c1_config/config.ts (216 lines, no changes)
+```
+**New files to create:**
+- None (config.ts is already clean)
+
+#### c1_pet_models (Pet State Models)
+```
+Current → Proposed
+[NEW] → c1_pet_models/pet_state.ts (150 lines)
+  Extract from: src/engine/StateManager.ts (lines 5-120: PetState interface)
+
+[NEW] → c1_pet_models/pet_actions.ts (50 lines)
+  Extract from: src/engine/PetEngine.ts (lines 8-12: PetAction interface)
+
+[NEW] → c1_pet_models/pet_types.ts (30 lines)
+  Extract: Pet type definitions ('dog' | 'cat' | 'dragon' | 'robot')
+  Extract: Mood type definitions
+```
+
+#### c1_feedback_models (Feedback Types)
+```
+Current → Proposed
+src/engine/feedback/types.ts → c1_feedback_models/feedback_types.ts (158 lines, no changes)
+```
+
+#### c1_feedback_database (Feedback Database)
+```
+Current → Proposed
+src/engine/feedback/FeedbackDatabase.ts → c1_feedback_database/feedback_database.ts (522 lines, minimal changes)
+```
+
+#### c1_llm_client (LLM Client Base)
+```
+Current → Proposed
+src/llm/LlmWrapper.ts → c1_llm_client/llm_wrapper.ts (210 lines)
+src/llm/LlmHttpProvider.ts → c1_llm_client/llm_http_provider.ts (144 lines)
+
+[NEW] → c1_llm_client/groq_client.ts (200 lines)
+  Extract from: src/llm/GroqClient.ts (core API communication only)
+```
+
+#### c1_llm_factory (LLM Provider Factory)
+```
+Current → Proposed
+src/llm/LlmWrapperFactory.ts → c1_llm_factory/llm_wrapper_factory.ts (63 lines, update imports)
+```
+
+#### c1_llm_providers (LLM Provider Implementations)
+```
+Current → Proposed
+src/llm/providers/GroqProvider.ts → c1_llm_providers/groq_provider.ts (300 lines)
+  Split: Extract analysis logic to c2_llm_analysis
+  Split: Extract prompts to c1_llm_prompts
+
+src/llm/providers/LMStudioProvider.ts → c1_llm_providers/lmstudio_provider.ts (300 lines)
+  Split: Extract analysis logic to c2_llm_analysis
+  Split: Extract prompts to c1_llm_prompts
+```
+
+#### c1_llm_prompts (LLM Prompt Templates)
+```
+[NEW] → c1_llm_prompts/analysis_prompts.ts (200 lines)
+  Extract from: GroqProvider.ts (prompt building methods)
+  Extract from: LMStudioProvider.ts (prompt building methods)
+
+[NEW] → c1_llm_prompts/violation_prompts.ts (100 lines)
+  Extract from: GroqProvider.ts (violation check prompts)
+```
+
+#### c1_animations (Animation Data)
+```
+Current → Proposed
+src/animations/index.ts → c1_animations/animations.ts (237 lines, no changes)
+```
+
+### 5.2 Layer c2: Services Packages
+
+#### c2_pet_engine (Pet Engine Services)
+```
+Current → Proposed
+src/engine/StateManager.ts → c2_pet_engine/state_manager.ts (200 lines)
+  Split: Extract PetState interface to c1_pet_models
+
+src/engine/PetEngine.ts → c2_pet_engine/pet_engine.ts (250 lines)
+  Split: Extract PetAction to c1_pet_models
+  Split: Extract action handlers to pet_action_handlers.ts
+  Split: Extract display to c3_statusline_display
+
+[NEW] → c2_pet_engine/pet_action_handlers.ts (100 lines)
+  Extract from: PetEngine.ts (handleFeed, handlePet, handlePlay, etc.)
+
+src/engine/DecaySystem.ts → c2_pet_engine/pet_decay.ts (148 lines, rename)
+src/engine/ActivitySystem.ts → c2_pet_engine/activity_system.ts (380 lines, update imports)
+src/engine/AnimationManager.ts → c2_pet_engine/animation_manager.ts (197 lines, update imports)
+```
+
+#### c2_thought_system (Thought Generation)
+```
+Current → Proposed
+src/engine/ThoughtSystem.ts → c2_thought_system/thought_system.ts (345 lines)
+src/engine/thoughts/actionThoughts.ts → c2_thought_system/action_thoughts.ts (441 lines)
+src/engine/thoughts/codingThoughts.ts → c2_thought_system/coding_thoughts.ts (321 lines)
+src/engine/thoughts/comboThoughts.ts → c2_thought_system/combo_thoughts.ts (279 lines)
+src/engine/thoughts/needThoughts.ts → c2_thought_system/need_thoughts.ts (317 lines)
+src/engine/thoughts/randomThoughts.ts → c2_thought_system/random_thoughts.ts (299 lines)
+```
+
+#### c2_feedback_service (Feedback Analysis)
+```
+Current → Proposed
+src/engine/feedback/FeedbackSystem.ts → c2_feedback_service/feedback_system.ts (307 lines)
+src/engine/feedback/TranscriptAnalyzer.ts → c2_feedback_service/transcript_analyzer.ts (491 lines)
+src/engine/feedback/MessageProcessor.ts → c2_feedback_service/message_processor.ts (359 lines)
+
+src/workers/analyze-transcript.ts → c2_feedback_service/feedback_worker.ts (300 lines)
+  Split: Extract orchestration to worker_orchestrator.ts
+  Split: Extract database ops to worker_database.ts
+
+[NEW] → c2_feedback_service/worker_orchestrator.ts (200 lines)
+  Extract from: analyze-transcript.ts (LLM orchestration)
+
+[NEW] → c2_feedback_service/worker_database.ts (169 lines)
+  Extract from: analyze-transcript.ts (database operations)
+```
+
+#### c2_llm_analysis (LLM Analysis Logic)
+```
+[NEW] → c2_llm_analysis/analysis_orchestrator.ts (300 lines)
+  Extract from: GroqProvider.ts (analysis methods)
+  Extract from: LMStudioProvider.ts (analysis methods)
+  Common analysis logic shared across providers
+
+[NEW] → c2_llm_analysis/response_parser.ts (200 lines)
+  Extract from: GroqProvider.ts (response parsing)
+  Extract from: LMStudioProvider.ts (response parsing)
+```
+
+### 5.3 Layer c3: Application Packages
+
+#### c3_statusline_display (Display Rendering)
+```
+[NEW] → c3_statusline_display/pet_display.ts (100 lines)
+  Extract from: PetEngine.ts (getDisplay, getStats, getMoodEmoji)
+  Extract from: PetEngine.ts (getSystemMessage, getCurrentThought, getFeedbackIcon)
+
+[NEW] → c3_statusline_display/display_formatter.ts (50 lines)
+  Extract: Display formatting helpers
+  Extract: Emoji mapping logic
+```
+
+#### c3_pet_commands (Pet CLI Commands)
+```
+Current → Proposed
+src/commands/CommandProcessor.ts → c3_pet_commands/command_processor.ts (267 lines)
+src/commands/cli.ts → c3_pet_commands/cli.ts (35 lines)
+src/commands/pet-cli.ts → c3_pet_commands/pet_cli.ts (14 lines)
+src/commands/violation-check.ts → c3_pet_commands/violation_check.ts (143 lines)
+```
+
+#### c3_main (Application Entry Point)
+```
+Current → Proposed
+src/index.ts → c3_main/index.ts (134 lines, update imports)
+```
+
+### 5.4 Summary of File Mapping
+
+**Package count:**
+- c1 packages: 9 packages (config, pet_models, feedback_models, feedback_database, llm_client, llm_factory, llm_providers, llm_prompts, animations)
+- c2 packages: 4 packages (pet_engine, thought_system, feedback_service, llm_analysis)
+- c3 packages: 3 packages (statusline_display, pet_commands, main)
+- **Total: 16 packages**
+
+**File count:**
+- Current: 30 files
+- Proposed: 45 files (15 new files created from splits)
+- Average file size: Reduced from 340 lines to 227 lines
+
+**New files created (15):**
+1. c1_pet_models/pet_state.ts
+2. c1_pet_models/pet_actions.ts
+3. c1_pet_models/pet_types.ts
+4. c1_llm_client/groq_client.ts
+5. c1_llm_prompts/analysis_prompts.ts
+6. c1_llm_prompts/violation_prompts.ts
+7. c2_pet_engine/pet_action_handlers.ts
+8. c2_feedback_service/worker_orchestrator.ts
+9. c2_feedback_service/worker_database.ts
+10. c2_llm_analysis/analysis_orchestrator.ts
+11. c2_llm_analysis/response_parser.ts
+12. c3_statusline_display/pet_display.ts
+13. c3_statusline_display/display_formatter.ts
+14. (GroqProvider split into groq_provider.ts - counted in providers)
+15. (LMStudioProvider split into lmstudio_provider.ts - counted in providers)
+
+---
+
+## 6. Risk Assessment
+
+### 6.1 Migration Risks
+
+**HIGH RISK:**
+1. **Import path breakage across 30 files**
+   - Impact: Every file needs import updates
+   - Mitigation: Migrate incrementally, test after each package
+   - Validation: Use TypeScript compiler to catch broken imports
+
+2. **Test breakage**
+   - Impact: All test files will have broken imports
+   - Mitigation: Update tests alongside source code
+   - Validation: Run test suite after each package migration
+
+**MEDIUM RISK:**
+3. **Runtime path resolution issues**
+   - Impact: Dynamic imports, worker spawning may fail
+   - Mitigation: Update all path.join() calls, test worker spawning
+   - Areas: analyze-transcript.ts worker spawn (line 277)
+
+4. **Database initialization paths**
+   - Impact: FeedbackDatabase may fail to find correct paths
+   - Mitigation: Use absolute paths, update config
+   - Areas: FeedbackDatabase constructor, worker env vars
+
+**LOW RISK:**
+5. **External package imports**
+   - Impact: Minimal (only 4 external packages)
+   - Mitigation: No changes needed for external imports
+
+6. **Circular dependencies**
+   - Impact: None detected in current code
+   - Mitigation: Use architecture validator script
+   - Prevention: Enforce c1→c2→c3 layer rules
+
+### 6.2 Complexity Risks
+
+**File Count Increase:**
+- Current: 30 files → Proposed: 45 files (+50%)
+- Risk: Harder to navigate codebase
+- Mitigation: Flat structure makes navigation easier, clear naming
+
+**Import Statement Increase:**
+- Current: ~100 import statements → Proposed: ~150 import statements (+50%)
+- Risk: More imports to manage
+- Mitigation: TypeScript auto-import, clear package structure
+
+**Package Boundary Enforcement:**
+- Risk: Developers violate layer rules (c3 imports from c3, c2 imports from c3)
+- Mitigation: Architecture validation script, code review, documentation
+
+### 6.3 Migration Effort Estimate
+
+Based on Hephaestus refactoring experience (16-24 hours):
+
+**Stage 0: Preparation (1-2 hours)**
+- Create refactoring branch
+- Run test baseline
+- Create validation script
+
+**Stage 1: c1 Layer Migration (6-8 hours)**
+- 9 packages to create
+- 15 files to move
+- 5 files to split
+- High dependency count (many files import c1)
+
+**Stage 2: c2 Layer Migration (5-7 hours)**
+- 4 packages to create
+- 12 files to move
+- 3 files to split
+- Medium dependency count
+
+**Stage 3: c3 Layer Migration (3-4 hours)**
+- 3 packages to create
+- 8 files to move
+- Low dependency count
+
+**Stage 4: Cleanup and Validation (2-3 hours)**
+- Remove old directories
+- Run validation
+- Update documentation
+
+**Total Estimate: 17-24 hours**
+
+---
+
+## 7. Recommendations
+
+### 7.1 Immediate Actions
+
+1. **Create architecture validation script** (Priority: HIGH)
+   - Script: `scripts/validate_architecture.ts`
+   - Validates: c1 imports (stdlib only), c2 imports (c1 only), c3 imports (c1+c2)
+   - Detects: Circular dependencies, layer violations
+   - Runtime: Run on pre-commit hook
+
+2. **Create detailed migration plan** (Priority: HIGH)
+   - Document: `TODO-modular-monolith-file-mapping-detailed.txt`
+   - Contents: Exact file-by-file migration steps
+   - Include: Import updates for each file
+   - Include: Test file updates
+
+3. **Establish test baseline** (Priority: HIGH)
+   - Command: `./test-complete.sh`
+   - Document: Current test count, pass/fail status
+   - Baseline: All tests must pass before starting migration
+
+### 7.2 Migration Strategy
+
+**Incremental Migration (Recommended):**
+1. Migrate c1 packages first (foundation)
+2. Update all imports in c2 and c3 to point to new c1 locations
+3. Test after each c1 package migration
+4. Migrate c2 packages second
+5. Update all imports in c3 to point to new c2 locations
+6. Test after each c2 package migration
+7. Migrate c3 packages last
+8. Final validation and cleanup
+
+**Alternative: Big Bang Migration (Not Recommended):**
+- Migrate all packages at once
+- Higher risk of breakage
+- Harder to debug issues
+- Not recommended for this project size
+
+### 7.3 Package Creation Order
+
+**c1 Layer (Foundation) - Create First:**
+1. c1_config (no internal imports)
+2. c1_animations (no internal imports)
+3. c1_pet_models (extract from StateManager, PetEngine)
+4. c1_feedback_models (rename from types.ts)
+5. c1_feedback_database (update imports only)
+6. c1_llm_client (move + split GroqClient)
+7. c1_llm_prompts (extract from providers)
+8. c1_llm_providers (split providers)
+9. c1_llm_factory (update imports)
+
+**c2 Layer (Services) - Create Second:**
+1. c2_pet_engine (split PetEngine, StateManager, systems)
+2. c2_thought_system (move thoughts)
+3. c2_feedback_service (split TranscriptAnalyzer, FeedbackSystem, worker)
+4. c2_llm_analysis (extract from providers)
+
+**c3 Layer (Applications) - Create Last:**
+1. c3_statusline_display (extract from PetEngine)
+2. c3_pet_commands (move commands)
+3. c3_main (move index.ts)
+
+### 7.4 File Splitting Priority
+
+**MUST SPLIT (Before Migration):**
+1. GroqProvider.ts (890 lines → 3 files)
+2. LMStudioProvider.ts (871 lines → 3 files)
+3. GroqClient.ts (952 lines → 2 files)
+
+**SHOULD SPLIT (During Migration):**
+4. PetEngine.ts (452 lines → 3 files)
+5. StateManager.ts (354 lines → 2 files: extract interface)
+
+**OPTIONAL SPLIT (After Migration):**
+6. analyze-transcript.ts (669 lines → 3 files)
+
+### 7.5 Validation Requirements
+
+**After Each Package Migration:**
+- [ ] TypeScript compilation succeeds
+- [ ] No import errors
+- [ ] Tests pass
+- [ ] No new lint warnings
+
+**Final Validation:**
+- [ ] All tests pass (18/18 in Docker)
+- [ ] Architecture validator passes
+- [ ] No circular dependencies detected
+- [ ] All files in flat package structure
+- [ ] No nested folders under src/
+- [ ] Layer dependency rules enforced
+
+---
+
+## 8. Conclusion
+
+The tamagotchi-dev codebase is well-structured with no circular dependencies, making it an excellent candidate for modular monolith refactoring. The main challenges are:
+
+1. **File splitting**: 3 large LLM files need splitting before migration
+2. **Import updates**: All 30 files need import path updates
+3. **Worker spawning**: Dynamic paths need updating
+
+The proposed 16-package structure will provide:
+- Clear layer separation (c1: 9 packages, c2: 4 packages, c3: 3 packages)
+- Flat directory structure (easier navigation)
+- Smaller, focused files (average 227 lines vs 340 lines)
+- Enforced dependency rules (prevent future circular dependencies)
+- Better testability (isolated concerns)
+
+**Estimated effort: 17-24 hours** for complete migration, matching the Hephaestus refactoring experience.
+
+The codebase is ready for migration once the preparation work (validation script, detailed mapping) is complete.
+
+---
+
+**Report Generated:** 2025-11-04
+**Working Directory:** /Users/sp/mounts-docker/docker-tamagotchi/tamagotchi-dev
+**Total Files Analyzed:** 30 TypeScript files (10,215 lines)
+**Analysis Tools:** Bash, grep, wc, Read tool
+**Reference Document:** TODO-modular-monolith-reorganization.txt
