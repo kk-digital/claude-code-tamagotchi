@@ -1,4 +1,4 @@
-import { LLMAnalysisResult, ViolationCheck, ViolationRecord } from '../../engine/feedback/types';
+import { LLMAnalysisResult, ViolationCheck, ViolationRecord } from '../../c1_feedback_models/feedback_types';
 import { LlmHttpProvider } from '../LlmHttpProvider';
 import { LlmWrapperSettings, LlmResponse } from '../LlmWrapper';
 

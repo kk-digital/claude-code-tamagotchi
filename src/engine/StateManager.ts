@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { config } from '../utils/config';
+import { config } from '../c1_config/config';
 
 export interface PetState {
   // Core identity

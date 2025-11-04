@@ -2,13 +2,13 @@ import { Database } from 'bun:sqlite';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { 
-  MessageMetadata, 
-  Feedback, 
-  ProcessingLock, 
+import {
+  MessageMetadata,
+  Feedback,
+  ProcessingLock,
   AnalysisState,
-  ViolationRecord 
-} from './types';
+  ViolationRecord
+} from '../c1_feedback_models/feedback_types';
 
 export class FeedbackDatabase {
   private db: Database;

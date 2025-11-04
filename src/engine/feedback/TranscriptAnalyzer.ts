@@ -1,8 +1,8 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
-import { FeedbackDatabase } from './FeedbackDatabase';
+import { FeedbackDatabase } from '../../c1_feedback_database/feedback_database';
 import { MessageProcessor } from './MessageProcessor';
-import { Feedback, FeedbackConfig } from './types';
+import { Feedback, FeedbackConfig } from '../../c1_feedback_models/feedback_types';
 
 export class TranscriptAnalyzer {
   private db: FeedbackDatabase;

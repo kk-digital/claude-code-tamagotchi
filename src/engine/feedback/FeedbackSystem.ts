@@ -1,7 +1,7 @@
 import { TranscriptAnalyzer } from './TranscriptAnalyzer';
 import { PetState } from '../StateManager';
-import { config } from '../../utils/config';
-import { FeedbackConfig, Feedback } from './types';
+import { config } from '../../c1_config/config';
+import { FeedbackConfig, Feedback } from '../../c1_feedback_models/feedback_types';
 
 export class FeedbackSystem {
   private analyzer: TranscriptAnalyzer | null = null;

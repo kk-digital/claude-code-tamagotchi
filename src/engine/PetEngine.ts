@@ -2,7 +2,7 @@ import { StateManager, PetState } from './StateManager';
 import { AnimationManager } from './AnimationManager';
 import { ActivitySystem } from './ActivitySystem';
 import { FeedbackSystem } from './feedback/FeedbackSystem';
-import { config } from '../utils/config';
+import { config } from '../c1_config/config';
 import * as fs from 'fs';
 
 export interface PetAction {

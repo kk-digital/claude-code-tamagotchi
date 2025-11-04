@@ -1,5 +1,5 @@
-import { LLMAnalysisResult } from '../engine/feedback/types';
-import { FeedbackDatabase } from '../engine/feedback/FeedbackDatabase';
+import { LLMAnalysisResult } from '../c1_feedback_models/feedback_types';
+import { FeedbackDatabase } from '../c1_feedback_database/feedback_database';
 
 /**
  * Response from LLM provider
