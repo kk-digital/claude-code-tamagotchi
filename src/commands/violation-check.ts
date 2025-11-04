@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { FeedbackDatabase } from '../c1_feedback_database/feedback_database';
-import { ViolationRecord } from '../c1_feedback_models/feedback_types';
+import { FeedbackDatabase } from '../c1_pet_feedback_database/feedback_database';
+import { ViolationRecord } from '../c1_pet_feedback_models/feedback_types';
 
 /**
  * Pre-hook command for Claude Code to check for violations

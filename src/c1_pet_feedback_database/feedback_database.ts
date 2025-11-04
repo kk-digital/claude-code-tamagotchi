@@ -8,7 +8,7 @@ import {
   ProcessingLock,
   AnalysisState,
   ViolationRecord
-} from '../c1_feedback_models/feedback_types';
+} from '../c1_pet_feedback_models/feedback_types';
 
 export class FeedbackDatabase {
   private db: Database;

@@ -1,5 +1,5 @@
-import { FeedbackDatabase } from '../../c1_feedback_database/feedback_database';
-import { TranscriptMessage } from '../../c1_feedback_models/feedback_types';
+import { FeedbackDatabase } from '../../c1_pet_feedback_database/feedback_database';
+import { TranscriptMessage } from '../../c1_pet_feedback_models/feedback_types';
 import * as fs from 'fs';
 
 export class MessageProcessor {

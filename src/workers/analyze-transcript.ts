@@ -5,7 +5,7 @@
  * Runs as a detached process to avoid blocking the main statusline
  */
 
-import { FeedbackDatabase } from '../c1_feedback_database/feedback_database';
+import { FeedbackDatabase } from '../c1_pet_feedback_database/feedback_database';
 import { MessageProcessor } from '../engine/feedback/MessageProcessor';
 import { LlmWrapperFactory } from '../c1_llm_factory/llm_wrapper_factory';
 import { LlmWrapperSettings } from '../c1_llm_client/llm_wrapper';
@@ -14,7 +14,7 @@ import {
   MessageMetadata,
   Feedback,
   LLMAnalysisResult
-} from '../c1_feedback_models/feedback_types';
+} from '../c1_pet_feedback_models/feedback_types';
 import * as fs from 'fs';
 import * as path from 'path';
 

@@ -1,4 +1,4 @@
-import { animations, Animation, getWeatherOverlay } from '../c1_animations/animations';
+import { animations, Animation, getWeatherOverlay } from '../c1_pet_animations/animations';
 import { PetState } from './StateManager';
 import { config } from '../c1_config/config';
 

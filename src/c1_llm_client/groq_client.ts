@@ -1,6 +1,6 @@
 import Groq from 'groq-sdk';
-import { LLMAnalysisResult, ViolationCheck, ViolationRecord } from '../c1_feedback_models/feedback_types';
-import { FeedbackDatabase } from '../c1_feedback_database/feedback_database';
+import { LLMAnalysisResult, ViolationCheck, ViolationRecord } from '../c1_pet_feedback_models/feedback_types';
+import { FeedbackDatabase } from '../c1_pet_feedback_database/feedback_database';
 
 export class GroqClient {
   private client: Groq | null = null;
