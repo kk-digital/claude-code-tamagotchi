@@ -1,6 +1,6 @@
 import Groq from 'groq-sdk';
 import { LLMAnalysisResult, ViolationCheck, ViolationRecord } from '../../c1_pet_feedback_models/feedback_types';
-import { LlmWrapper, LlmWrapperSettings, LlmResponse } from '../c1_llm_client/llm_wrapper';
+import { LlmWrapper, LlmWrapperSettings, LlmResponse } from '../c1_llm_analysis/llm_wrapper';
 
 /**
  * Groq cloud LLM provider

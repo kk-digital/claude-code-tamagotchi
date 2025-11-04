@@ -1,6 +1,6 @@
-import { LlmWrapper, LlmWrapperSettings } from '../c1_llm_client/llm_wrapper';
-import { GroqProvider } from '../c1_llm_providers/groq_provider';
-import { LMStudioProvider } from '../c1_llm_providers/lmstudio_provider';
+import { LlmWrapper, LlmWrapperSettings } from '../c1_llm_analysis/llm_wrapper';
+import { GroqProvider } from '../c1_llm_analysis/groq_provider';
+import { LMStudioProvider } from '../c1_llm_analysis/lmstudio_provider';
 
 /**
  * Factory for creating LLM provider instances
