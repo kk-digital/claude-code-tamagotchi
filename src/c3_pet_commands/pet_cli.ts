@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CommandProcessor } from './CommandProcessor';
+import { CommandProcessor } from './command_processor';
 
 // Join all arguments after the script name to handle commands with parameters
 const args = process.argv.slice(2);

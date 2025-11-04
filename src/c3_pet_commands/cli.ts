@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // CLI handler for pet commands - to be called directly from command line
-import { CommandProcessor } from './CommandProcessor';
+import { CommandProcessor } from './command_processor';
 
 const command = process.argv[2];
 const args = process.argv.slice(3).join(' ');
