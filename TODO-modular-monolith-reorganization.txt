@@ -1,0 +1,404 @@
+================================================================================
+TODO: Modular Monolith Reorganization - Three-Layer Architecture
+================================================================================
+Status: PLANNING
+Priority: MEDIUM - Architectural improvement, not urgent
+Date Created: 2025-11-04
+Estimated Effort: 16-24 hours (based on Hephaestus refactoring)
+
+================================================================================
+OBJECTIVE
+================================================================================
+
+Reorganize claude-code-tamagotchi codebase using three-layer modular monolith
+architecture pattern based on Hephaestus refactoring experience.
+
+GOALS:
+1. Flat package structure at src/ level (NO nested folders)
+2. Clear layer separation (c1: Foundation, c2: Services, c3: Applications)
+3. Modular organization by domain (feedback, llm, engine, pet, etc.)
+4. Strict dependency rules (c1 imports stdlib only, c2 imports c1, c3 imports c1+c2)
+5. Easier to test, maintain, and extend
+
+================================================================================
+NAMING CONVENTION
+================================================================================
+
+**Standard Format**: `c{N}_{noun}_{function}`
+
+Where:
+- `c{N}` = Layer number (c1, c2, or c3)
+- `{noun}` = Domain/entity type (pet, llm, feedback, engine, embedding, etc.)
+- `{function}` = Module type (models, service, routes, client, session, etc.)
+
+**Examples**:
+- c1_pet_models - Layer 1: Pet state data models
+- c1_llm_client - Layer 1: LLM client wrapper
+- c2_feedback_service - Layer 2: Feedback analysis service
+- c3_statusline_display - Layer 3: Statusline rendering
+
+**CRITICAL RULE**: All packages at src/ level - NO subfolders/nesting
+
+================================================================================
+THREE-LAYER ARCHITECTURE
+================================================================================
+
+**Layer c1: Foundation**
+- Data models (TypeScript interfaces, types)
+- Configuration loading
+- External service clients (LLM, embedding providers)
+- Database/storage abstractions
+- Shared utilities and helpers
+
+**Layer c2: Services**
+- Business logic and algorithms
+- Service orchestration
+- Background processing (workers)
+- Pet state management
+- Feedback analysis
+
+**Layer c3: Applications**
+- Statusline display
+- Pet interaction commands
+- CLI interfaces
+- Output rendering
+
+**Layer Dependency Rules**:
+- c1 imports: stdlib + external packages ONLY (no internal imports)
+- c2 imports: c1 + stdlib + external packages
+- c3 imports: c1 + c2 + stdlib + external packages
+- NO circular dependencies allowed
+
+================================================================================
+CURRENT STATE ANALYSIS
+================================================================================
+
+Current structure (mixed hierarchy):
+```
+src/
+├── engine/
+│   ├── feedback/
+│   │   ├── FeedbackDatabase.ts
+│   │   ├── FeedbackSystem.ts
+│   │   ├── TranscriptAnalyzer.ts
+│   │   └── types.ts
+│   └── pet/
+│       ├── PetEngine.ts
+│       ├── Animations.ts
+│       ├── Moods.ts
+│       └── StatuslineBuilder.ts
+├── llm/
+│   ├── LlmWrapper.ts
+│   ├── LlmHttpProvider.ts
+│   ├── LlmWrapperFactory.ts
+│   └── providers/
+│       ├── GroqProvider.ts
+│       └── LMStudioProvider.ts
+├── workers/
+│   └── analyze-transcript.ts
+├── utils/
+│   ├── config.ts
+│   └── logger.ts
+└── index.ts
+```
+
+**Issues**:
+1. Nested folder structure (engine/, llm/, workers/, utils/)
+2. No clear layer separation
+3. Mixed concerns in single files
+4. Circular dependency risks
+5. Hard to understand import relationships
+
+================================================================================
+PROPOSED MODULAR MONOLITHS
+================================================================================
+
+**5 Modular Monoliths** (domain-based):
+
+1. **Pet State Module** - Pet lifecycle and state management
+   - Packages: c1_pet_models, c2_pet_engine, c3_statusline_display
+   - Responsibilities: Pet stats, moods, animations, decay, actions
+
+2. **Feedback Analysis Module** - AI-powered behavioral monitoring
+   - Packages: c1_feedback_models, c2_feedback_service, c1_feedback_database
+   - Responsibilities: Transcript analysis, violation detection, LLM calls
+
+3. **LLM Provider Module** - LLM communication and abstraction
+   - Packages: c1_llm_client, c1_llm_factory
+   - Responsibilities: Provider abstraction, HTTP logic, SDK wrappers
+
+4. **Embedding Module** - Vector embeddings (future)
+   - Packages: c1_embedding_client, c2_embedding_service
+   - Responsibilities: Embedding generation, semantic search
+
+5. **Configuration Module** - Configuration and logging
+   - Packages: c1_config, c1_logger
+   - Responsibilities: Environment loading, logging setup
+
+================================================================================
+PROPOSED STRUCTURE (FLAT)
+================================================================================
+
+```
+src/
+├── c1_config/
+│   ├── config.ts              # Config loading and validation
+│   └── env_loader.ts          # Environment variable parsing
+├── c1_logger/
+│   └── logger.ts              # Logging utilities
+├── c1_pet_models/
+│   ├── pet_state.ts           # PetState interface
+│   ├── pet_types.ts           # Pet types (dog, cat, dragon, robot)
+│   ├── pet_enums.ts           # Mood, ActionType enums
+│   └── pet_config.ts          # Pet configuration interface
+├── c1_feedback_models/
+│   ├── feedback_types.ts      # LLMAnalysisResult, ViolationCheck interfaces
+│   └── feedback_config.ts     # Feedback configuration
+├── c1_feedback_database/
+│   ├── feedback_database.ts   # FeedbackDatabase class
+│   └── schema.sql             # Database schema
+├── c1_llm_client/
+│   ├── llm_wrapper.ts         # LlmWrapper abstract base class
+│   ├── llm_http_provider.ts   # LlmHttpProvider abstract class
+│   └── llm_response.ts        # LlmResponse interface
+├── c1_llm_factory/
+│   └── llm_wrapper_factory.ts # Factory for creating LLM providers
+├── c1_llm_providers/
+│   ├── groq_provider.ts       # GroqProvider implementation
+│   └── lmstudio_provider.ts   # LMStudioProvider implementation
+├── c2_pet_engine/
+│   ├── pet_engine.ts          # PetEngine class (main logic)
+│   ├── pet_decay.ts           # Stat decay calculations
+│   ├── pet_actions.ts         # Action handling (feed, play, etc.)
+│   └── pet_moods.ts           # Mood calculation and transitions
+├── c2_feedback_service/
+│   ├── transcript_analyzer.ts # TranscriptAnalyzer class
+│   ├── feedback_system.ts     # FeedbackSystem orchestration
+│   └── feedback_worker.ts     # Background worker (analyze-transcript)
+├── c3_statusline_display/
+│   ├── statusline_builder.ts  # StatuslineBuilder class
+│   ├── animations.ts          # Animation rendering
+│   └── emoji_renderer.ts      # Emoji and symbol rendering
+└── index.ts                   # Main entry point
+```
+
+**Estimated Package Count**: 15-18 packages across 3 layers
+**Estimated File Count**: 35-40 TypeScript files (smaller, focused)
+
+**Layer Distribution**:
+- c1 packages: 8-10 packages (models, configs, clients)
+- c2 packages: 4-5 packages (services, business logic)
+- c3 packages: 2-3 packages (display, CLI)
+
+================================================================================
+FILE MAPPING (CURRENT → PROPOSED)
+================================================================================
+
+**Layer c1 (Foundation)**:
+src/utils/config.ts → c1_config/config.ts
+src/utils/logger.ts → c1_logger/logger.ts
+src/engine/feedback/types.ts → c1_feedback_models/feedback_types.ts
+src/engine/feedback/FeedbackDatabase.ts → c1_feedback_database/feedback_database.ts
+src/llm/LlmWrapper.ts → c1_llm_client/llm_wrapper.ts
+src/llm/LlmHttpProvider.ts → c1_llm_client/llm_http_provider.ts
+src/llm/LlmWrapperFactory.ts → c1_llm_factory/llm_wrapper_factory.ts
+src/llm/providers/GroqProvider.ts → c1_llm_providers/groq_provider.ts
+src/llm/providers/LMStudioProvider.ts → c1_llm_providers/lmstudio_provider.ts
+
+**Layer c2 (Services)**:
+src/engine/pet/PetEngine.ts → c2_pet_engine/pet_engine.ts (+ split)
+src/engine/feedback/FeedbackSystem.ts → c2_feedback_service/feedback_system.ts
+src/engine/feedback/TranscriptAnalyzer.ts → c2_feedback_service/transcript_analyzer.ts
+src/workers/analyze-transcript.ts → c2_feedback_service/feedback_worker.ts
+
+**Layer c3 (Applications)**:
+src/engine/pet/StatuslineBuilder.ts → c3_statusline_display/statusline_builder.ts
+src/engine/pet/Animations.ts → c3_statusline_display/animations.ts
+
+**New files to create** (split from large files):
+c1_pet_models/pet_state.ts (extract from PetEngine.ts)
+c1_pet_models/pet_enums.ts (extract from PetEngine.ts)
+c2_pet_engine/pet_decay.ts (extract from PetEngine.ts)
+c2_pet_engine/pet_actions.ts (extract from PetEngine.ts)
+c2_pet_engine/pet_moods.ts (extract from PetEngine.ts)
+
+================================================================================
+REFACTORING STRATEGY
+================================================================================
+
+**6 Stages** (16-24 hours estimated):
+
+**Stage 0: Preparation** (1-2 hours)
+[ ] Create refactoring branch: refactor/modular-monolith
+[ ] Run full test suite to establish baseline
+[ ] Create validation script (check layer dependencies)
+[ ] Document current test count
+[ ] Commit baseline state
+
+**Stage 1: Research and Analysis** (2-3 hours)
+[ ] Analyze current file dependencies (what imports what)
+[ ] Identify circular dependencies to break
+[ ] Map all files to target packages
+[ ] Identify files that need splitting
+[ ] Create detailed migration plan
+[ ] Document in TODO-modular-monolith-file-mapping.txt
+
+**Stage 2: Create Package Structure** (1-2 hours)
+[ ] Create all c1_* package directories
+[ ] Create all c2_* package directories
+[ ] Create all c3_* package directories
+[ ] Add __init__.ts or index.ts to each package
+[ ] Verify structure matches flat pattern
+[ ] Commit empty structure
+
+**Stage 3: Migrate c1 Layer** (4-6 hours)
+[ ] Move config.ts to c1_config/
+[ ] Move logger.ts to c1_logger/
+[ ] Move feedback types to c1_feedback_models/
+[ ] Move FeedbackDatabase to c1_feedback_database/
+[ ] Move LLM client files to c1_llm_client/
+[ ] Move LLM factory to c1_llm_factory/
+[ ] Move LLM providers to c1_llm_providers/
+[ ] Extract pet models to c1_pet_models/
+[ ] Update all imports in moved files
+[ ] Test after each package migration
+[ ] Commit after each successful migration
+
+**Stage 4: Migrate c2 Layer** (4-6 hours)
+[ ] Move FeedbackSystem to c2_feedback_service/
+[ ] Move TranscriptAnalyzer to c2_feedback_service/
+[ ] Move analyze-transcript worker to c2_feedback_service/
+[ ] Move PetEngine to c2_pet_engine/ (may need splitting)
+[ ] Split pet_decay logic if needed
+[ ] Split pet_actions logic if needed
+[ ] Split pet_moods logic if needed
+[ ] Update all imports in moved files
+[ ] Test after each package migration
+[ ] Commit after each successful migration
+
+**Stage 5: Migrate c3 Layer** (2-3 hours)
+[ ] Move StatuslineBuilder to c3_statusline_display/
+[ ] Move Animations to c3_statusline_display/
+[ ] Update all imports in moved files
+[ ] Update index.ts imports
+[ ] Test after each package migration
+[ ] Commit after each successful migration
+
+**Stage 6: Cleanup and Validation** (2-3 hours)
+[ ] Remove old src/engine/ directory
+[ ] Remove old src/llm/ directory
+[ ] Remove old src/workers/ directory
+[ ] Remove old src/utils/ directory
+[ ] Run validation script (check layer dependencies)
+[ ] Run full test suite
+[ ] Fix any remaining import issues
+[ ] Update README.md with new structure
+[ ] Update package.json if needed
+[ ] Final commit
+
+================================================================================
+VALIDATION AND TESTING
+================================================================================
+
+**Architecture Validator** (to create):
+scripts/validate_architecture.ts
+- Validates layer dependency rules
+- Detects circular dependencies
+- Ensures c1 doesn't import c2/c3, c2 doesn't import c3
+- Reports violations with file paths
+
+**Test Strategy**:
+- Run test-complete.sh after each package migration
+- TypeScript compilation must succeed
+- All tests must pass (currently 18/18 in Docker)
+- No new import errors
+
+**Success Criteria**:
+[ ] All tests still pass (18/18)
+[ ] TypeScript compiles without errors
+[ ] No circular dependencies
+[ ] Layer dependencies validated
+[ ] All files in flat package structure
+[ ] No nested folders under src/
+
+================================================================================
+DEPENDENCY ANALYSIS NEEDED
+================================================================================
+
+**Questions to Answer** (Stage 1 research):
+
+1. What are all current file dependencies?
+   - Which files import which files?
+   - Are there any circular dependencies?
+   - What external packages does each file use?
+
+2. Which files are too large and need splitting?
+   - PetEngine.ts: How big? What concerns can be separated?
+   - FeedbackSystem.ts: How big? Any splitting opportunities?
+   - TranscriptAnalyzer.ts: How big? Any splitting opportunities?
+
+3. What are the natural module boundaries?
+   - Can we split by domain (pet, feedback, llm)?
+   - What shared utilities are needed?
+   - What are the core interfaces?
+
+4. How do we handle the migration path?
+   - Can we move files incrementally?
+   - Do we need temporary re-exports during migration?
+   - How do we avoid breaking tests during migration?
+
+5. What TypeScript/Bun-specific considerations exist?
+   - How does Bun handle package resolution?
+   - Do we need to update tsconfig.json?
+   - Are there any bundler-specific issues?
+
+================================================================================
+RISKS AND MITIGATIONS
+================================================================================
+
+**Risks**:
+1. Breaking tests during migration
+2. Circular dependency issues
+3. Import path resolution problems
+4. TypeScript compilation errors
+5. Merge conflicts if main branch changes
+
+**Mitigations**:
+1. Incremental migration (commit after each package)
+2. Comprehensive testing after each stage
+3. Use architecture validation script
+4. Keep refactoring branch up to date with main
+5. Document all import changes
+
+================================================================================
+NEXT IMMEDIATE STEPS
+================================================================================
+
+1. Create refactoring branch
+2. Run test baseline
+3. Launch research task to analyze current codebase:
+   - File sizes and line counts
+   - Import dependency graph
+   - Identify circular dependencies
+   - Identify files needing splits
+   - Create detailed file mapping
+
+================================================================================
+REFERENCE DOCUMENTS
+================================================================================
+
+Related files:
+- /Users/sp/claude/claude-docker.hephaestus/Hephaestus/Hephaestus/reports/251104-module-structure-and-naming.txt
+- src/llm/LlmWrapper.ts (current abstract base class)
+- src/llm/LlmHttpProvider.ts (current HTTP provider base)
+- src/engine/pet/PetEngine.ts (current pet logic)
+- src/engine/feedback/FeedbackSystem.ts (current feedback system)
+
+New files to create:
+- TODO-modular-monolith-file-mapping.txt (detailed mapping)
+- scripts/validate_architecture.ts (validation script)
+- REFACTORING-BASELINE.txt (test baseline)
+
+================================================================================
+END OF TODO
+================================================================================
