@@ -7,8 +7,8 @@
 
 import { FeedbackDatabase } from '../c2_pet_feedback/feedback_database';
 import { MessageProcessor } from './message_processor';
-import { LlmWrapperFactory } from '../c1_llm_analysis/llm_wrapper_factory';
-import { LlmWrapperSettings } from '../c1_llm_analysis/llm_wrapper';
+import { LlmWrapperFactory } from '../c1_pet_llm_analysis/llm_wrapper_factory';
+import { LlmWrapperSettings } from '../c1_pet_llm_analysis/llm_wrapper';
 import {
   TranscriptMessage,
   MessageMetadata,

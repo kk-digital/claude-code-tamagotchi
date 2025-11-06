@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { config } from '../c1_config/config';
+import { config } from '../c1_pet_config/config';
 import { PetAction } from '../c2_pet_engine/pet_engine';
 
 // Define valid foods and their emojis

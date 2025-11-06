@@ -1,6 +1,6 @@
 import { animations, Animation, getWeatherOverlay } from '../c1_pet_animations/animations';
 import { PetState } from './state_manager';
-import { config } from '../c1_config/config';
+import { config } from '../c1_pet_config/config';
 
 export class AnimationManager {
   

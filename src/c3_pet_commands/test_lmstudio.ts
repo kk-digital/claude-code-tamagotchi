@@ -1,5 +1,5 @@
 // Test LM Studio connection and AI features
-import { config } from '../c1_config/config';
+import { config } from '../c1_pet_config/config';
 
 interface TestResult {
   name: string;

@@ -1,5 +1,5 @@
 import { PetState } from './state_manager';
-import { config, getWeatherEffects } from '../c1_config/config';
+import { config, getWeatherEffects } from '../c1_pet_config/config';
 import { thoughtSystem } from '../c2_pet_thoughts/thought_system';
 
 const SESSION_GAP_THRESHOLD = 5 * 60 * 1000; // 5 minutes = new session

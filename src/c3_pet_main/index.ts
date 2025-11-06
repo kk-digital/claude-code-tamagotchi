@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { PetEngine } from '../c2_pet_engine/pet_engine';
-import { config } from '../c1_config/config';
+import { config } from '../c1_pet_config/config';
 import * as path from 'path';
 import * as fs from 'fs';
 

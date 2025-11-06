@@ -1,5 +1,5 @@
 import { PetState } from './state_manager';
-import { config, getWeatherEffects } from '../c1_config/config';
+import { config, getWeatherEffects } from '../c1_pet_config/config';
 
 export class DecaySystem {
   applyDecay(state: PetState): void {

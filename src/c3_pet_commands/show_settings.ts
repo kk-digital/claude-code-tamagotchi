@@ -1,5 +1,5 @@
 // Display current pet configuration and status
-import { config } from '../c1_config/config';
+import { config } from '../c1_pet_config/config';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
