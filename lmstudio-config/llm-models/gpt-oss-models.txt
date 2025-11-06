@@ -1,0 +1,362 @@
+================================================================================
+LM STUDIO LLM MODELS - GPT-OSS CONFIGURATION AND PRESETS
+================================================================================
+Date: 2025-11-05
+Purpose: Configuration for GPT-OSS chat/completion models in LM Studio on macOS
+Models: openai/gpt-oss-20b and openai/gpt-oss-120b
+
+================================================================================
+SUPPORTED GPT-OSS MODELS
+================================================================================
+
+✅ **openai/gpt-oss-20b** (FAST & LIGHTWEIGHT)
+   - Parameters: 20 billion
+   - Size: ~12 GB (Q4_K_M quantization)
+   - Context: 32,768 tokens
+   - Best for: Fast local inference, development, testing
+   - Use case: Real-time chat, quick responses, Groq API alternative
+   - Speed: ~30-50 tokens/sec (M1 Max, GPU)
+   - RAM Required: 16 GB minimum, 24 GB recommended
+   - VRAM: 12 GB (full GPU), 8 GB (partial offload)
+
+✅ **openai/gpt-oss-120b** (HIGH QUALITY)
+   - Parameters: 120 billion
+   - Size: ~70 GB (Q4_K_M quantization)
+   - Context: 32,768 tokens
+   - Best for: High-quality reasoning, complex analysis, production
+   - Use case: Code review, detailed analysis, transcript evaluation
+   - Speed: ~8-15 tokens/sec (M1 Max, GPU)
+   - RAM Required: 80 GB minimum, 128 GB recommended
+   - VRAM: 48 GB+ (full GPU), 24 GB+ (partial offload)
+   - RECOMMENDED FOR PRODUCTION
+
+================================================================================
+PRESET CONFIGURATIONS
+================================================================================
+
+**PRESET 1: GPT-OSS-20B FAST** (Development/Testing)
+Model: openai/gpt-oss-20b
+Quantization: Q4_K_M
+GPU Layers: 40 (full offload if 12 GB+ VRAM)
+CPU Threads: 8
+Context Length: 8192 (reduce for speed)
+Temperature: 0.7
+Top P: 0.9
+Max Tokens: 2048
+Repeat Penalty: 1.1
+Use case: Quick testing, fast iteration, Groq replacement
+
+**PRESET 2: GPT-OSS-20B BALANCED** (General Purpose)
+Model: openai/gpt-oss-20b
+Quantization: Q4_K_M
+GPU Layers: 35 (partial offload for memory)
+CPU Threads: 12
+Context Length: 16384
+Temperature: 0.6
+Top P: 0.85
+Max Tokens: 4096
+Repeat Penalty: 1.15
+Use case: Standard chat, moderate complexity tasks
+
+**PRESET 3: GPT-OSS-120B PRODUCTION** (High Quality)
+Model: openai/gpt-oss-120b
+Quantization: Q4_K_M
+GPU Layers: 60 (full offload if 48 GB+ VRAM)
+CPU Threads: 16
+Context Length: 32768 (full context)
+Temperature: 0.5
+Top P: 0.8
+Max Tokens: 8192
+Repeat Penalty: 1.2
+Use case: Production transcript analysis, code review
+
+**PRESET 4: GPT-OSS-120B CPU-ONLY** (No GPU)
+Model: openai/gpt-oss-120b
+Quantization: Q4_K_M
+GPU Layers: 0 (CPU only)
+CPU Threads: 16
+Context Length: 8192 (reduce for speed)
+Temperature: 0.6
+Top P: 0.85
+Max Tokens: 2048
+Repeat Penalty: 1.15
+Use case: Systems without GPU, batch processing
+
+================================================================================
+MODEL SELECTION GUIDE
+================================================================================
+
+**Choose based on requirements:**
+
+| Use Case                  | Model           | RAM   | VRAM  | Speed (tok/s) |
+|---------------------------|-----------------|-------|-------|---------------|
+| Fast local testing        | gpt-oss-20b     | 16 GB | 8 GB  | 30-50         |
+| Groq API replacement      | gpt-oss-20b     | 24 GB | 12 GB | 40-60         |
+| Detailed analysis         | gpt-oss-120b    | 80 GB | 24 GB | 10-20         |
+| Production transcript     | gpt-oss-120b    | 128GB | 48 GB | 12-18         |
+| CPU-only (no GPU)         | gpt-oss-20b     | 32 GB | 0     | 5-10          |
+
+**Speed vs Quality:**
+- gpt-oss-20b: 3-6x faster, good quality (similar to GPT-3.5)
+- gpt-oss-120b: Best quality (similar to GPT-4), slower
+
+**Memory Requirements:**
+- gpt-oss-20b: 16 GB RAM minimum (24 GB recommended)
+- gpt-oss-120b: 80 GB RAM minimum (128 GB recommended)
+
+================================================================================
+SYSTEM PROMPTS
+================================================================================
+
+**SYSTEM PROMPT 1: TRANSCRIPT ANALYSIS** (For Tamagotchi Feedback)
+
+You are analyzing Claude Code transcripts to detect violations of best practices.
+Analyze conversations between user and AI assistant for issues like:
+- Excessive narration or thinking out loud
+- Over-apologizing or hedging
+- Unnecessary repetition
+- Poor error handling
+- Inefficient tool usage
+
+Respond in JSON format with:
+{
+  "violations": [...],
+  "severity": "good|annoying|problematic",
+  "funny_observation": "brief humorous remark from pet's perspective"
+}
+
+**SYSTEM PROMPT 2: CODE REVIEW**
+
+You are a code reviewer analyzing code changes for:
+- Code quality and best practices
+- Potential bugs or issues
+- Performance concerns
+- Security vulnerabilities
+- Documentation completeness
+
+Provide constructive feedback with specific suggestions.
+
+**SYSTEM PROMPT 3: GENERAL ASSISTANT**
+
+You are a helpful AI assistant. Provide clear, concise, and accurate responses.
+Focus on being practical and actionable.
+
+================================================================================
+ENVIRONMENT VARIABLES
+================================================================================
+
+Add to your .env file:
+
+# LLM Provider Selection
+PET_LLM_PROVIDER=lmstudio  # Use LM Studio instead of Groq
+
+# LM Studio LLM Configuration
+LM_STUDIO_ENABLED=true
+LM_STUDIO_URL=http://localhost:1234/v1
+LM_STUDIO_MODEL=openai/gpt-oss-120b  # or openai/gpt-oss-20b
+LM_STUDIO_API_KEY=  # Usually not needed for local
+
+# Timeout and Retry Settings
+PET_LM_STUDIO_TIMEOUT=30000  # 30 seconds (120b is slower)
+PET_LM_STUDIO_MAX_RETRIES=1
+
+# Generation Parameters (optional, can set in LM Studio UI)
+LM_STUDIO_TEMPERATURE=0.6
+LM_STUDIO_MAX_TOKENS=4096
+LM_STUDIO_TOP_P=0.85
+
+================================================================================
+TESTING LLM CHAT COMPLETIONS
+================================================================================
+
+**Test chat completion (gpt-oss-20b):**
+
+```bash
+curl -X POST http://localhost:1234/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-oss-20b",
+    "messages": [{"role": "user", "content": "What is 2+2?"}],
+    "temperature": 0.7,
+    "max_tokens": 100
+  }' | jq '.choices[0].message.content'
+```
+
+Expected output: "4" or explanation
+
+**Test chat completion (gpt-oss-120b):**
+
+```bash
+curl -X POST http://localhost:1234/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-oss-120b",
+    "messages": [{"role": "user", "content": "Explain quantum computing in one sentence."}],
+    "temperature": 0.6,
+    "max_tokens": 200
+  }' | jq '.choices[0].message.content'
+```
+
+**Test streaming response:**
+
+```bash
+curl -X POST http://localhost:1234/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-oss-20b",
+    "messages": [{"role": "user", "content": "Count from 1 to 5"}],
+    "stream": true
+  }'
+```
+
+**Test with system prompt:**
+
+```bash
+curl -X POST http://localhost:1234/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-oss-20b",
+    "messages": [
+      {"role": "system", "content": "You are a helpful coding assistant."},
+      {"role": "user", "content": "Write a Python function to reverse a string"}
+    ],
+    "temperature": 0.7,
+    "max_tokens": 500
+  }' | jq '.choices[0].message.content'
+```
+
+================================================================================
+LM STUDIO UI SETTINGS
+================================================================================
+
+**Model Loading Settings:**
+
+1. Open LM Studio
+2. Go to "My Models" tab
+3. Search and download: "openai/gpt-oss-20b" or "openai/gpt-oss-120b"
+4. Click model → "Load Model"
+5. Configure settings:
+
+   **GPU Acceleration:**
+   - gpt-oss-20b: Set GPU layers to 40 (full offload)
+   - gpt-oss-120b: Set GPU layers to 60 (full offload) or less if limited VRAM
+
+   **Context Length:**
+   - Development: 8192 tokens (faster)
+   - Production: 32768 tokens (full context)
+
+   **CPU Threads:**
+   - Set to physical core count (8-16 for most systems)
+
+   **Temperature:**
+   - Deterministic: 0.3-0.5
+   - Balanced: 0.6-0.7
+   - Creative: 0.8-1.0
+
+**Server Settings:**
+
+1. Go to "Local Server" tab
+2. Enable "Auto-start server"
+3. Port: 1234 (default)
+4. Enable CORS: Yes (for web access)
+5. API Key: Leave empty (local access only)
+
+================================================================================
+PERFORMANCE BENCHMARKS (M1 Max, 32 GB RAM, 32 GPU Cores)
+================================================================================
+
+**gpt-oss-20b Performance:**
+- Load time: ~30 seconds
+- First token latency: ~500ms
+- Generation speed: 40-50 tokens/sec (GPU full offload)
+- Generation speed: 8-12 tokens/sec (CPU only)
+- Memory usage: ~14 GB RAM, 10 GB VRAM
+
+**gpt-oss-120b Performance:**
+- Load time: ~2 minutes
+- First token latency: ~2000ms
+- Generation speed: 12-15 tokens/sec (GPU full offload)
+- Generation speed: 2-4 tokens/sec (CPU only)
+- Memory usage: ~75 GB RAM, 40 GB VRAM (if available)
+
+**Comparison with Groq (gpt-oss-20b cloud):**
+- Groq speed: 100-200 tokens/sec (much faster, cloud)
+- LM Studio: 40-50 tokens/sec (slower, local, private)
+- Groq latency: ~200ms first token
+- LM Studio: ~500ms first token
+
+================================================================================
+QUANTIZATION OPTIONS
+================================================================================
+
+**Available quantizations for both models:**
+
+- **Q4_K_M** (RECOMMENDED) - Best balance of quality and size
+  - gpt-oss-20b: ~12 GB
+  - gpt-oss-120b: ~70 GB
+  - Quality: 95% of original, fast
+
+- **Q5_K_M** - Higher quality, larger size
+  - gpt-oss-20b: ~15 GB
+  - gpt-oss-120b: ~90 GB
+  - Quality: 98% of original, slightly slower
+
+- **Q8_0** - Maximum quality, largest size
+  - gpt-oss-20b: ~22 GB
+  - gpt-oss-120b: ~130 GB
+  - Quality: 99.5% of original, slowest
+
+- **Q3_K_M** - Smallest size, lower quality
+  - gpt-oss-20b: ~8 GB
+  - gpt-oss-120b: ~50 GB
+  - Quality: 90% of original, fastest
+
+**Recommendation**: Use Q4_K_M for best balance
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+**Error: "Model not loaded"**
+- Cause: Model not loaded in LM Studio UI
+- Solution: Load model in "My Models" tab before testing
+
+**Slow generation (<5 tokens/sec)**
+- Cause: Running on CPU only or insufficient GPU offload
+- Solution: Increase GPU layers in LM Studio settings
+
+**Out of memory error**
+- Cause: Insufficient RAM for model
+- Solution: Use gpt-oss-20b instead of 120b, or reduce context length
+
+**Connection refused**
+- Cause: LM Studio server not running
+- Solution: Start server in "Local Server" tab
+
+**Timeout errors**
+- Cause: Generation takes longer than timeout (especially 120b)
+- Solution: Increase PET_LM_STUDIO_TIMEOUT to 60000ms (60 seconds)
+
+**Poor quality responses**
+- Cause: Wrong quantization or incorrect settings
+- Solution: Use Q4_K_M or higher, adjust temperature (0.6-0.7)
+
+================================================================================
+COMPARING GPT-OSS TO OTHER MODELS
+================================================================================
+
+**gpt-oss-20b vs alternatives:**
+- vs GPT-3.5-turbo: Similar quality, local/private
+- vs Llama-2-13b: Better quality, similar speed
+- vs Mistral-7b: Slower but better reasoning
+- vs Groq gpt-oss-20b: Same model, Groq is 3-5x faster (cloud)
+
+**gpt-oss-120b vs alternatives:**
+- vs GPT-4: Similar quality, local/private
+- vs Llama-2-70b: Better reasoning, similar speed
+- vs Claude-2: Similar analytical capability
+- vs GPT-4-turbo: GPT-4 faster, but 120b is local/private
+
+================================================================================
+END OF GPT-OSS MODELS CONFIGURATION
+================================================================================

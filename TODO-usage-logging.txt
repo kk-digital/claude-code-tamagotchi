@@ -1,0 +1,705 @@
+================================================================================
+TODO: CLAUDE CODE USAGE AND STATUS LOGGING
+================================================================================
+Date: 2025-11-04
+Status: PENDING
+Priority: MEDIUM
+
+================================================================================
+OBJECTIVE
+================================================================================
+
+Implement comprehensive logging system for Claude Code usage and status:
+- Log /usage data every minute to JSONL file
+- Log /status data at start and every hour
+- Record session metadata: email, session_id, version, cwd, model
+- Store logs in structured JSONL format for analysis
+
+================================================================================
+REQUIREMENTS
+================================================================================
+
+1. USAGE LOGGING (Every Minute)
+   - Run /usage command every 60 seconds
+   - Parse JSON response
+   - Append to usage.jsonl file
+   - Include timestamp, session context
+
+2. STATUS LOGGING (Hourly + Startup)
+   - Run /status at application start
+   - Run /status every 3600 seconds
+   - Parse JSON response
+   - Append to status.jsonl file
+   - Extract: email, session_id, version, cwd, model
+   - Extract system diagnostics: warnings, permissions, config mismatches
+
+3. SYSTEM DIAGNOSTICS LOGGING
+   - Capture all diagnostic warnings from /status output
+   - Log permission issues (auto-update permissions, sudo requirements)
+   - Log installation config mismatches (npm-global vs unknown)
+   - Track diagnostic trends over time
+   - Examples:
+     - "Insufficient permissions for auto-updates"
+     - "No write permissions for auto-updates (requires sudo)"
+     - "Installation config mismatch: running npm-global but config says unknown"
+
+4. FILE FORMAT AND STORAGE OPTIONS
+
+   DECISION REQUIRED: Choose storage backend
+
+   Option A: JSONL Log Files (Append-Only)
+   - Format: JSONL (JSON Lines) - one JSON object per line
+   - Files: usage.jsonl, status.jsonl, diagnostics.jsonl
+   - Location: ~/.claude/pets/logs/ or /data/ directory
+   - Rotation: Optional log rotation by size/date
+   - Pros: Simple, human-readable, grep/jq friendly, no schema management
+   - Cons: No indexing, slower queries on large files, no transactions
+
+   Option B: SQLite Database
+   - Format: SQLite database file
+   - File: ~/.claude/pets/logs/usage.db or /data/usage.db
+   - Tables: usage_logs, status_logs, diagnostics
+   - Pros: Indexed queries, faster filtering, structured schema, SQL support
+   - Cons: Requires schema migrations, binary format, needs SQLite library
+
+   Option C: Hybrid Approach
+   - Use existing FeedbackDatabase (SQLite) for structured data
+   - Add new tables: usage_logs, status_logs, system_diagnostics
+   - Reuse database infrastructure (FeedbackDatabase class)
+   - Location: Same as feedback.db (~/.claude/pets/feedback.db)
+   - Pros: Leverage existing code, single database, structured queries
+   - Cons: Mixes concerns (feedback + usage logging)
+
+   DECISION CONFIRMED: Option A (JSONL) - APPROVED FOR IMPLEMENTATION
+   - Simpler to implement (no schema management)
+   - Easy to parse with standard tools (jq, grep, awk)
+   - Can migrate to SQLite later if needed
+   - Aligns with append-only logging pattern
+   - Storage location: /data/logs/ directory (created with .gitkeep)
+   - NO FALLBACK - Single location only
+
+   REPOSITORY SETUP COMPLETE:
+   - data/logs/.gitkeep added to git
+   - .gitignore configured to ignore *.jsonl, *.log, *.db in data/logs/
+   - Directory structure ready for implementation
+
+   STORAGE LOCATION (SINGLE LOCATION):
+   - /data/logs/ (created in repository, tracked with .gitkeep)
+   - ONLY location for all deployments (no fallback paths)
+   - Relative path from repository root: ./data/logs/
+   - Configurable ONLY via PET_LOG_DIR environment variable (explicit override)
+
+   AUTO-DETECTION LOGIC (SIMPLIFIED):
+   1. Check if PET_LOG_DIR is set (use explicit path)
+   2. Otherwise use /data/logs/ (repository location)
+   3. Create directory if it doesn't exist
+   4. If creation fails, log error and disable logging
+
+   RATIONALE FOR SINGLE LOCATION:
+   - Predictable location (always in repository)
+   - No confusion about where logs are stored
+   - No scattered log files across filesystem
+   - Easier debugging (one place to check)
+   - Simpler implementation (no fallback logic)
+
+5. DATA STRUCTURE
+   usage.jsonl line format:
+   {
+     "timestamp": "2025-11-04T12:34:56.789Z",
+     "session_id": "abc123",
+     "usage_data": { /* raw /usage response */ },
+     "cwd": "/path/to/working/dir"
+   }
+
+   status.jsonl line format:
+   {
+     "timestamp": "2025-11-04T12:00:00.000Z",
+     "session_id": "abc123",
+     "email": "user@example.com",
+     "version": "claude-code-1.2.3",
+     "model": "claude-sonnet-4-5-20250929",
+     "cwd": "/path/to/working/dir",
+     "status_data": { /* raw /status response */ },
+     "diagnostics": {
+       "warnings": [
+         "Insufficient permissions for auto-updates",
+         "No write permissions for auto-updates (requires sudo)"
+       ],
+       "config_mismatches": [
+         "Installation config mismatch: running npm-global but config says unknown"
+       ],
+       "permissions": {
+         "auto_update": false,
+         "requires_sudo": true
+       }
+     }
+   }
+
+   diagnostics.jsonl line format (optional separate file):
+   {
+     "timestamp": "2025-11-04T12:00:00.000Z",
+     "session_id": "abc123",
+     "diagnostic_type": "permission_warning",
+     "severity": "warning",
+     "message": "Insufficient permissions for auto-updates",
+     "details": {
+       "permission": "auto_update",
+       "requires_sudo": true,
+       "installation_method": "npm-global",
+       "config_method": "unknown"
+     }
+   }
+
+================================================================================
+TECHNICAL APPROACH
+================================================================================
+
+Option 1: Separate Background Process
+- Create src/monitoring/UsageLogger.ts
+- Spawn detached process on application start
+- Use setInterval for periodic logging
+- Write to JSONL files with append mode
+- Process exits when main app exits
+
+Option 2: Integrated into StatusLine
+- Add logging to existing statusline update loop
+- Track last usage/status log time
+- Call logging functions on interval
+- Minimal overhead, same process
+
+Option 3: Shell Script with Cron
+- External bash script runs /usage and /status
+- Parse output with jq
+- Append to JSONL files
+- Scheduled via cron or systemd timer
+
+Recommended: Option 2 (Integrated)
+- No additional processes
+- Access to internal state
+- Consistent with existing architecture
+
+================================================================================
+IMPLEMENTATION PLAN
+================================================================================
+
+Phase 1: Data Collection Infrastructure
+[ ] Create src/monitoring/ directory
+[ ] Create UsageLogger.ts class
+[ ] Implement /usage command execution
+[ ] Implement /status command execution
+[ ] Parse JSON responses
+[ ] Extract system diagnostics from /status
+[ ] Parse diagnostic warnings and config mismatches
+[ ] Handle command execution errors
+
+Phase 2: Storage Implementation (JSONL - CONFIRMED)
+[✓] DECISION: JSONL format confirmed
+[✓] Create /data/logs/ directory structure (done - .gitkeep added)
+[✓] Configure .gitignore for log files (done - *.jsonl, *.log, *.db ignored)
+[ ] Implement directory validation logic (STRICT):
+    [ ] Check PET_LOG_DIR environment variable (explicit override)
+    [ ] Otherwise use /data/logs/ (repository location)
+    [ ] ASSERT directory exists or can be created
+    [ ] ASSERT directory is writable (test write)
+    [ ] CRASH with clear error message if assertions fail
+[ ] Implement JSONL append function (STRICT):
+    [ ] Open file in append mode
+    [ ] Stringify JSON object
+    [ ] Append newline
+    [ ] ASSERT write succeeded
+    [ ] CRASH on write errors (no graceful degradation)
+[ ] Implement atomic writes (write to temp, then rename):
+    [ ] Write to {filename}.tmp
+    [ ] ASSERT temp write succeeded
+    [ ] Rename to final filename
+    [ ] ASSERT rename succeeded
+    [ ] CRASH on any failure
+[ ] Add file rotation logic (optional):
+    [ ] Check file size before write
+    [ ] Rotate if exceeds PET_LOG_MAX_SIZE
+    [ ] Keep PET_LOG_MAX_FILES files
+    [ ] Delete oldest rotated file
+    [ ] ASSERT rotation operations succeed
+[ ] Error handling philosophy (STRICT):
+    [ ] NO retry logic
+    [ ] NO graceful degradation
+    [ ] NO fallback locations
+    [ ] CRASH immediately with detailed error message
+    [ ] Log error to stderr before crash
+    [ ] Include: path attempted, permission error, disk space, etc.
+
+Phase 3: Timing and Scheduling
+[ ] Track last usage log time
+[ ] Track last status log time
+[ ] Implement minute interval for usage
+[ ] Implement hour interval for status
+[ ] Log status on startup
+
+Phase 4: Integration
+[ ] Integrate with StatusLine or FeedbackSystem
+[ ] Add configuration options
+[ ] Test logging behavior
+[ ] Verify JSONL format correctness
+
+Phase 5: Configuration
+[ ] Add environment variables:
+    - PET_USAGE_LOGGING_ENABLED (default: false)
+    - PET_USAGE_LOG_INTERVAL (default: 60000ms)
+    - PET_STATUS_LOG_INTERVAL (default: 3600000ms)
+    - PET_LOG_DIR (default: auto-detect /data/ or ~/.claude/pets/logs/)
+    - PET_LOG_STORAGE_TYPE (default: jsonl, options: jsonl, sqlite, hybrid)
+    - PET_LOG_MAX_SIZE (default: 10MB, for JSONL rotation)
+    - PET_LOG_MAX_FILES (default: 10, for JSONL rotation)
+[ ] Document in .env.example (add all new variables)
+[ ] Update README.md (explain storage options)
+[ ] Ensure keys/values documented in config
+
+Phase 6: Testing
+[ ] Test usage logging (1 minute intervals)
+[ ] Test status logging (startup + hourly)
+[ ] Test diagnostic extraction and logging
+[ ] Verify JSONL format
+[ ] Verify diagnostic warnings captured
+[ ] Verify config mismatches captured
+[ ] Test log file rotation
+[ ] Test error handling
+
+================================================================================
+FILE STRUCTURE
+================================================================================
+
+New files to create:
+  src/monitoring/UsageLogger.ts         # Main logging class
+  src/monitoring/CommandExecutor.ts     # Execute /usage and /status
+  src/monitoring/JsonlWriter.ts         # JSONL file writer
+  src/monitoring/types.ts               # Type definitions
+
+Modified files:
+  src/index.ts or src/statusline.ts     # Integration point
+  src/utils/config.ts                   # Add logging config
+  .env.example                          # Document env vars
+  README.md                             # Document logging feature
+
+Log files (created at runtime):
+  ~/.claude/pets/logs/usage.jsonl       # Usage data log
+  ~/.claude/pets/logs/status.jsonl      # Status data log (includes diagnostics)
+  ~/.claude/pets/logs/diagnostics.jsonl # Optional separate diagnostics log
+  ~/.claude/pets/logs/usage.jsonl.1     # Rotated logs (optional)
+
+================================================================================
+COMMAND EXECUTION DETAILS
+================================================================================
+
+/usage Command:
+- Returns: JSON with token usage, costs, API calls
+- Execution: Via child process or Claude Code API
+- Frequency: Every 60 seconds
+- Error handling: Log error, continue (don't crash app)
+
+/status Command:
+- Returns: JSON with email, session_id, version, cwd, model, diagnostics
+- System Diagnostics section contains:
+  - Permission warnings (auto-update permissions, sudo requirements)
+  - Config mismatches (installation method vs config method)
+  - Other system health indicators
+- Execution: Via child process or Claude Code API
+- Frequency: Startup + every 3600 seconds
+- Error handling: Log error, retry on next interval
+- Parsing: Extract diagnostics section from JSON/text output
+
+Command execution method:
+- Option A: spawn('claude', ['usage'], {shell: true})
+- Option B: Internal API call (if available)
+- Option C: IPC with main Claude Code process
+
+Recommended: Option A (spawn)
+- Reliable, well-tested
+- Works in all environments
+- Same as other tool integrations
+
+================================================================================
+ERROR HANDLING
+================================================================================
+
+Scenarios to handle:
+1. Command execution fails
+   - Log error to stderr
+   - Continue operation (don't crash)
+   - Retry on next interval
+
+2. JSON parse error
+   - Log raw output
+   - Skip this interval
+   - Continue on next interval
+
+3. File write error (JSONL)
+   - Log to stderr
+   - Retry with backoff
+   - Disable logging if persistent failures
+   - Check if /data/ directory is writable
+   - Fallback to ~/.claude/pets/logs/ if /data/ fails
+
+3b. Database write error (SQLite)
+   - Log to stderr
+   - Check database file permissions
+   - Verify schema is up to date
+   - Retry with backoff
+   - Disable logging if persistent failures
+
+4. Permission errors
+   - Create log directory if missing (/data/logs/ or ~/.claude/pets/logs/)
+   - Check write permissions on directory
+   - Check write permissions on files
+   - Provide clear error message with path
+   - Document required permissions in error message
+
+5. Disk space errors
+   - Implement log rotation
+   - Warn when disk space low
+   - Stop logging if critical
+
+================================================================================
+CONFIGURATION OPTIONS
+================================================================================
+
+Environment Variables:
+
+# Enable usage/status logging
+PET_USAGE_LOGGING_ENABLED=false        # default: false
+
+# Log intervals
+PET_USAGE_LOG_INTERVAL=60000           # ms, default: 60000 (1 minute)
+PET_STATUS_LOG_INTERVAL=3600000        # ms, default: 3600000 (1 hour)
+
+# Storage backend selection
+PET_LOG_STORAGE_TYPE=jsonl             # default: jsonl, options: jsonl, sqlite, hybrid
+
+# Log file location (defaults to /data/logs/)
+PET_LOG_DIR=                           # default: /data/logs/ (created in repo)
+                                       # fallback: ~/.claude/pets/logs/ (if /data/logs/ not writable)
+                                       # explicit: /custom/path/to/logs/ (override)
+
+# Log rotation (JSONL only)
+PET_LOG_MAX_SIZE=10485760              # bytes, default: 10MB
+PET_LOG_MAX_FILES=10                   # default: 10 files
+
+# Database options (SQLite only)
+PET_LOG_DB_PATH=                       # default: {PET_LOG_DIR}/usage.db
+
+# Debug
+PET_LOGGING_DEBUG=false                # default: false
+
+NOTES:
+- Default location: /data/logs/ (created in repository with .gitkeep)
+- Log file contents ignored by .gitignore (*.jsonl, *.log, *.db)
+- Directory structure tracked in git, log contents excluded
+- If PET_LOG_DIR not set, auto-detects:
+  1. Try /data/logs/ (repository location, should exist)
+  2. Fallback to ~/.claude/pets/logs/ (if /data/logs/ not writable)
+- /data/logs/ suitable for both local and Docker deployments
+- Relative path from repository root: ./data/logs/
+
+================================================================================
+DATA ANALYSIS USE CASES
+================================================================================
+
+With JSONL logs, can analyze:
+- Token usage over time (cost tracking)
+- Model usage patterns
+- Session duration statistics
+- Working directory patterns
+- Email/user correlation
+- Claude Code version adoption
+- Peak usage hours
+- Cost optimization opportunities
+
+Analysis tools:
+- jq for command-line analysis
+- Python/pandas for data science
+- grep/awk for quick queries
+- Excel/Google Sheets for visualization
+
+Example queries:
+# Total tokens used today
+jq -s 'map(select(.timestamp | startswith("2025-11-04"))) | map(.usage_data.total_tokens // 0) | add' usage.jsonl
+
+# Models used in session
+jq -r '.model' status.jsonl | sort | uniq -c
+
+# Sessions per hour
+jq -r '.timestamp | split("T")[1] | split(":")[0]' status.jsonl | sort | uniq -c
+
+# All diagnostic warnings
+jq -r '.diagnostics.warnings[]?' status.jsonl | sort | uniq -c
+
+# Config mismatches over time
+jq -r 'select(.diagnostics.config_mismatches) | .timestamp + " " + (.diagnostics.config_mismatches | join(", "))' status.jsonl
+
+# Permission issues timeline
+jq -r 'select(.diagnostics.permissions.auto_update == false) | .timestamp + " - Auto-update permission: " + (.diagnostics.permissions.auto_update | tostring)' status.jsonl
+
+# Sessions with sudo requirements
+jq -r 'select(.diagnostics.permissions.requires_sudo == true) | .email + " (" + .timestamp + ")"' status.jsonl | uniq
+
+================================================================================
+TESTING CHECKLIST
+================================================================================
+
+[ ] Verify /usage command execution
+[ ] Verify /status command execution
+[ ] Verify system diagnostics extraction from /status
+[ ] Check JSONL format validity (each line is valid JSON)
+[ ] Verify timestamp format (ISO 8601)
+[ ] Test 1-minute interval for usage
+[ ] Test hourly interval for status
+[ ] Test startup status log
+[ ] Verify all fields captured correctly (email, session_id, version, cwd, model)
+[ ] Verify diagnostics fields captured (warnings, config_mismatches, permissions)
+[ ] Test diagnostic warning parsing ("Insufficient permissions for auto-updates")
+[ ] Test config mismatch parsing ("running npm-global but config says unknown")
+[ ] Test permission flags extraction (auto_update, requires_sudo)
+[ ] Test log file creation (directory doesn't exist)
+[ ] Test log file append (file already exists)
+[ ] Test log rotation (file exceeds max size)
+[ ] Test error handling (command fails)
+[ ] Test error handling (JSON parse fails)
+[ ] Test error handling (diagnostics missing)
+[ ] Test error handling (file write fails)
+[ ] Verify no performance impact on statusline
+[ ] Test with logging disabled (default state)
+[ ] Test with logging enabled
+[ ] Verify logs persist across restarts
+[ ] Test diagnostic query examples (jq queries)
+
+================================================================================
+DOCUMENTATION REQUIREMENTS
+================================================================================
+
+README.md section:
+- Explain usage/status logging feature
+- Explain system diagnostics logging
+- Show how to enable logging
+- Explain log file location
+- Provide analysis examples (including diagnostic queries)
+- Document diagnostic warning types
+- Link to privacy considerations
+
+.env.example:
+- Add all logging environment variables
+- Explain each variable
+- Provide recommended defaults
+
+CHANGELOG.md:
+- Document new feature
+- Note breaking changes (if any)
+- Provide migration guide (if needed)
+
+================================================================================
+PRIVACY CONSIDERATIONS
+================================================================================
+
+Important notes:
+- Logs contain email addresses (PII)
+- Logs contain working directory paths
+- Logs may contain sensitive file paths in cwd
+- Token usage may indicate proprietary information
+
+Recommendations:
+- Logging disabled by default
+- Clear documentation about what's logged
+- Option to anonymize email addresses
+- Option to exclude cwd from logs
+- Log rotation to limit retention
+- Secure file permissions (600)
+
+================================================================================
+ESTIMATED EFFORT
+================================================================================
+
+Phase 1: Data Collection         - 2 hours
+Phase 2: JSONL Writing           - 1 hour
+Phase 3: Timing/Scheduling       - 1 hour
+Phase 4: Integration             - 1 hour
+Phase 5: Configuration           - 1 hour
+Phase 6: Testing                 - 2 hours
+Documentation                    - 1 hour
+
+Total: ~9 hours
+
+================================================================================
+PRIORITY AND DEPENDENCIES
+================================================================================
+
+Priority: MEDIUM
+- Not critical for core functionality
+- Valuable for usage tracking and cost analysis
+- Can be added incrementally
+
+Dependencies:
+- Claude Code CLI must support /usage and /status commands
+- Filesystem write permissions
+- Bun runtime (for TypeScript execution)
+
+Blockers:
+- None (can implement anytime)
+
+Related features:
+- Existing feedback database (similar pattern)
+- StatusLine update loop (integration point)
+- Configuration system (env vars pattern)
+
+================================================================================
+FUTURE ENHANCEMENTS
+================================================================================
+
+Possible future additions:
+- Real-time dashboard (web UI)
+- Cost alerts (email/notification)
+- Usage graphs (ASCII or web-based)
+- Export to CSV/JSON
+- Integration with monitoring tools (Prometheus, Grafana)
+- Anomaly detection (unusual usage patterns)
+- Team usage aggregation
+- Billing/invoicing integration
+- Diagnostic trend analysis (tracking permission issues over time)
+- Alert on config mismatches (notify when installation method changes)
+- Permission health score (track sudo requirements, auto-update capability)
+- Diagnostic report generation (weekly summary of system health)
+
+================================================================================
+IMPLEMENTATION EXAMPLE
+================================================================================
+
+Pseudocode for UsageLogger.ts:
+
+```typescript
+export class UsageLogger {
+  private usageInterval: Timer | null = null;
+  private statusInterval: Timer | null = null;
+  private lastUsageLog: number = 0;
+  private lastStatusLog: number = 0;
+
+  constructor(private config: LoggingConfig) {}
+
+  start() {
+    // Log status immediately on start
+    this.logStatus();
+
+    // Start usage logging (every minute)
+    this.usageInterval = setInterval(() => {
+      this.logUsage();
+    }, this.config.usageInterval);
+
+    // Start status logging (every hour)
+    this.statusInterval = setInterval(() => {
+      this.logStatus();
+    }, this.config.statusInterval);
+  }
+
+  private async logUsage() {
+    try {
+      const usage = await this.executeUsageCommand();
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        session_id: this.getSessionId(),
+        usage_data: usage,
+        cwd: process.cwd()
+      };
+      await this.appendToJsonl('usage.jsonl', logEntry);
+    } catch (error) {
+      this.logError('Usage logging failed', error);
+    }
+  }
+
+  private async logStatus() {
+    try {
+      const status = await this.executeStatusCommand();
+      const diagnostics = this.extractDiagnostics(status);
+
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        session_id: status.session_id,
+        email: status.email,
+        version: status.version,
+        model: status.model,
+        cwd: status.cwd,
+        status_data: status,
+        diagnostics: {
+          warnings: diagnostics.warnings,
+          config_mismatches: diagnostics.configMismatches,
+          permissions: {
+            auto_update: diagnostics.autoUpdatePermission,
+            requires_sudo: diagnostics.requiresSudo
+          }
+        }
+      };
+      await this.appendToJsonl('status.jsonl', logEntry);
+    } catch (error) {
+      this.logError('Status logging failed', error);
+    }
+  }
+
+  private extractDiagnostics(status: any): Diagnostics {
+    // Parse /status output for diagnostic warnings
+    const warnings: string[] = [];
+    const configMismatches: string[] = [];
+    let autoUpdatePermission = true;
+    let requiresSudo = false;
+
+    // Extract from "System Diagnostics" section
+    const diagnosticsText = status.system_diagnostics || status.diagnostics || '';
+
+    if (diagnosticsText.includes('Insufficient permissions for auto-updates')) {
+      warnings.push('Insufficient permissions for auto-updates');
+      autoUpdatePermission = false;
+    }
+
+    if (diagnosticsText.includes('No write permissions for auto-updates (requires sudo)')) {
+      warnings.push('No write permissions for auto-updates (requires sudo)');
+      requiresSudo = true;
+    }
+
+    const configMismatchMatch = diagnosticsText.match(/Installation config mismatch: (.+)/);
+    if (configMismatchMatch) {
+      configMismatches.push(configMismatchMatch[1]);
+    }
+
+    return {
+      warnings,
+      configMismatches,
+      autoUpdatePermission,
+      requiresSudo
+    };
+  }
+
+  stop() {
+    if (this.usageInterval) clearInterval(this.usageInterval);
+    if (this.statusInterval) clearInterval(this.statusInterval);
+  }
+}
+```
+
+================================================================================
+ACCEPTANCE CRITERIA
+================================================================================
+
+Feature complete when:
+[ ] Usage logged every minute to JSONL file
+[ ] Status logged at startup and every hour to JSONL file
+[ ] All required fields captured (email, session_id, version, cwd, model)
+[ ] System diagnostics captured from /status output
+[ ] Diagnostic warnings extracted and logged
+[ ] Config mismatches extracted and logged
+[ ] Permission flags extracted (auto_update, requires_sudo)
+[ ] Logging disabled by default
+[ ] Configuration via environment variables
+[ ] Error handling prevents crashes
+[ ] JSONL format valid (parseable by jq)
+[ ] Documentation complete (README, .env.example)
+[ ] Diagnostic query examples provided
+[ ] Tests passing (including diagnostic extraction tests)
+[ ] No performance impact on core functionality
+
+================================================================================
+END OF TODO
+================================================================================

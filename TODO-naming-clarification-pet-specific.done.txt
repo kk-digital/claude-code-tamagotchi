@@ -1,0 +1,324 @@
+================================================================================
+TODO: Naming Clarification - Pet-Specific Systems
+================================================================================
+Date: 2025-11-04
+Priority: HIGH - Naming convention correction
+Status: CLARIFICATION NEEDED
+
+================================================================================
+ISSUE: Generic vs Domain-Specific Naming
+================================================================================
+
+CURRENT PROPOSED NAMES (INCORRECT - TOO GENERIC):
+- c2_feedback_service
+- c2_thought_system
+- c2_pet_engine
+
+PROBLEM:
+These names don't make it clear that these are PET-SPECIFIC systems, not generic
+feedback/thought systems that could be reused elsewhere.
+
+USER QUESTION:
+"is feedback system pet_feedback_system, is thought system, pet_thought_system
+or something else????"
+
+ANALYSIS:
+The user is correct - these systems are ALL pet-specific:
+- FeedbackSystem monitors PET behavior via Claude Code transcripts
+- ThoughtSystem generates PET thoughts based on pet state
+- PetEngine orchestrates the entire PET simulation
+
+================================================================================
+NAMING PRINCIPLE
+================================================================================
+
+All c2 services should be named with DOMAIN PREFIX to show they are pet-specific:
+
+**Pattern**: c2_pet_{function}
+
+This makes it clear:
+- These are part of the PET domain (not generic utilities)
+- They work together as a cohesive pet simulation system
+- They cannot be reused outside the pet context
+
+================================================================================
+CORRECTED PACKAGE NAMES
+================================================================================
+
+**c2 Layer (Services) - ALL PET-SPECIFIC:**
+
+OLD (INCORRECT):
+- c2_feedback_service
+- c2_thought_system
+- c2_pet_engine
+- c2_llm_analysis
+
+NEW (CORRECT):
+- c2_pet_feedback (pet feedback monitoring and analysis)
+- c2_pet_thoughts (pet thought generation)
+- c2_pet_engine (pet state management and orchestration)
+- c2_pet_llm (pet-specific LLM analysis - if needed)
+
+Alternative option (if c2_pet_llm is too specific):
+- Keep generic c2_llm_analysis? (but it's only used by pet feedback)
+- OR merge into c2_pet_feedback?
+
+================================================================================
+DETAILED PACKAGE BREAKDOWN
+================================================================================
+
+**c2_pet_feedback** (Pet Behavior Monitoring)
+Files:
+- feedback_system.ts (from engine/feedback/FeedbackSystem.ts)
+- transcript_analyzer.ts (from engine/feedback/TranscriptAnalyzer.ts)
+- message_processor.ts (from engine/feedback/MessageProcessor.ts)
+- feedback_worker.ts (from workers/analyze-transcript.ts)
+- feedback_database.ts (moved from c1_feedback_database)
+
+Purpose:
+- Monitors Claude Code transcripts for pet behavior
+- Analyzes user interactions with the pet
+- Detects violations and generates feedback
+- Pet-specific analysis using LLM
+
+**c2_pet_thoughts** (Pet Thought Generation)
+Files:
+- thought_system.ts (from engine/ThoughtSystem.ts)
+- action_thoughts.ts (from engine/thoughts/actionThoughts.ts)
+- coding_thoughts.ts (from engine/thoughts/codingThoughts.ts)
+- combo_thoughts.ts (from engine/thoughts/comboThoughts.ts)
+- need_thoughts.ts (from engine/thoughts/needThoughts.ts)
+- random_thoughts.ts (from engine/thoughts/randomThoughts.ts)
+
+Purpose:
+- Generates thoughts for the pet based on state
+- Different thought categories (action, coding, combo, need, random)
+- Pet-specific logic for thought selection
+
+**c2_pet_engine** (Pet State and Orchestration)
+Files:
+- pet_engine.ts (from engine/PetEngine.ts - orchestration only)
+- state_manager.ts (from engine/StateManager.ts)
+- pet_actions.ts (action handlers - extracted from PetEngine.ts)
+- pet_decay.ts (from engine/DecaySystem.ts)
+- activity_system.ts (from engine/ActivitySystem.ts)
+- animation_manager.ts (from engine/AnimationManager.ts)
+
+Purpose:
+- Pet state management (PetState)
+- Pet update loop
+- Pet action handling (feed, play, sleep, etc.)
+- Pet stat decay
+- Pet activity tracking
+- Pet animation selection
+
+================================================================================
+LAYER c1 CORRECTIONS (IF NEEDED)
+================================================================================
+
+**c1 Layer - Foundation (Pure Models and Infrastructure)**
+
+Current c1 packages are correct:
+- c1_config ✅ (generic configuration)
+- c1_animations ✅ (animation data - could be c1_pet_animations?)
+- c1_feedback_models ✅ (feedback types - could be c1_pet_feedback_models?)
+- c1_llm_client ✅ (generic LLM infrastructure)
+- c1_llm_providers ✅ (generic LLM providers)
+- c1_llm_factory ✅ (generic LLM factory)
+
+QUESTION: Should c1 models also have "pet" prefix?
+- c1_feedback_models → c1_pet_feedback_models?
+- c1_animations → c1_pet_animations?
+
+RECOMMENDATION:
+Keep c1 models generic for now:
+- c1_feedback_models (types are generic, could be reused)
+- c1_animations (animation data is generic)
+
+But add "pet" prefix to c2 services to show they are domain-specific.
+
+================================================================================
+ALTERNATIVE NAMING SCHEMES
+================================================================================
+
+**Option 1: All pet-prefixed (RECOMMENDED)**
+c2_pet_feedback
+c2_pet_thoughts
+c2_pet_engine
+
+Benefits:
+- Clear that everything is pet domain
+- Consistent naming
+- Easy to understand module boundaries
+
+**Option 2: Domain hierarchy (pet.feedback, pet.thoughts, pet.engine)**
+c2_pet_feedback
+c2_pet_thoughts
+c2_pet_engine
+
+(Same as Option 1 - this IS the hierarchy)
+
+**Option 3: Reverse order (feedback_pet, thoughts_pet, engine_pet)**
+c2_feedback_pet
+c2_thoughts_pet
+c2_engine_pet
+
+Benefits:
+- Groups by function first, then domain
+
+Drawbacks:
+- Less clear that these are all part of pet domain
+- Violates c{N}_{noun}_{function} pattern
+
+**Option 4: Combine c2_pet as single package**
+c2_pet/
+  feedback/
+  thoughts/
+  engine/
+
+Drawbacks:
+- Violates flat structure principle
+- Harder to enforce boundaries
+
+================================================================================
+RECOMMENDATION: OPTION 1 (pet-prefixed)
+================================================================================
+
+Use pet prefix for all c2 services:
+
+**c2 Layer (4 packages):**
+1. c2_pet_feedback
+2. c2_pet_thoughts
+3. c2_pet_engine
+4. c2_pet_llm (if needed, OR merge into c2_pet_feedback)
+
+This makes it crystal clear that:
+- These are pet-specific services
+- They form a cohesive pet simulation system
+- They are not generic utilities
+
+**Naming pattern for pet domain:**
+c{N}_pet_{function}
+
+Where function = feedback, thoughts, engine, llm, etc.
+
+================================================================================
+c1 vs c2 NAMING SUMMARY
+================================================================================
+
+**c1 (Foundation) - Generic or Reusable:**
+- c1_config (generic)
+- c1_animations (generic data)
+- c1_feedback_models (generic types)
+- c1_llm_client (generic infrastructure)
+- c1_llm_providers (generic infrastructure)
+- c1_llm_factory (generic infrastructure)
+
+**c2 (Services) - Pet-Specific:**
+- c2_pet_feedback (pet behavior monitoring)
+- c2_pet_thoughts (pet thought generation)
+- c2_pet_engine (pet state and orchestration)
+
+**c3 (Applications) - Pet-Specific:**
+- c3_pet_statusline (pet display)
+- c3_pet_commands (pet CLI commands)
+- c3_pet_main (pet application entry point)
+
+OR keep c3 generic since there's only one application:
+- c3_statusline (display)
+- c3_commands (CLI)
+- c3_main (entry point)
+
+================================================================================
+WHAT ABOUT LLM ANALYSIS?
+================================================================================
+
+Current plan has "c2_llm_analysis" but LLM analysis is ONLY used for pet feedback.
+
+OPTIONS:
+
+**Option A: Merge into c2_pet_feedback**
+- LLM analysis logic lives inside c2_pet_feedback
+- Makes sense since it's only used for pet feedback
+- Simpler structure
+
+**Option B: Separate c2_pet_llm package**
+- c2_pet_llm provides pet-specific LLM analysis
+- Used by c2_pet_feedback
+- More modular if we add other pet LLM features
+
+**Option C: Generic c2_llm_analysis**
+- Keep generic name
+- Could be reused for other LLM tasks (future)
+
+RECOMMENDATION: **Option A (merge into c2_pet_feedback)**
+- LLM analysis is tightly coupled to feedback
+- Simpler structure
+- YAGNI (don't create separate package until needed)
+
+================================================================================
+FINAL PROPOSED STRUCTURE
+================================================================================
+
+**c1 Layer (7 packages - unchanged):**
+- c1_config
+- c1_animations
+- c1_feedback_models
+- c1_llm_client
+- c1_llm_providers
+- c1_llm_factory
+- (c1_feedback_database moves to c2)
+
+**c2 Layer (3 packages):**
+- c2_pet_feedback (includes feedback_database, LLM analysis)
+- c2_pet_thoughts
+- c2_pet_engine
+
+**c3 Layer (3 packages):**
+- c3_statusline (or c3_pet_statusline?)
+- c3_commands (or c3_pet_commands?)
+- c3_main (or c3_pet_main?)
+
+Total: 13 packages (reduced from 16)
+
+Benefits:
+- Clear pet domain boundaries
+- Simpler structure (3 c2 packages instead of 4-5)
+- LLM analysis integrated where it's used
+- Feedback database in correct layer (c2)
+
+================================================================================
+ACTION REQUIRED
+================================================================================
+
+User should confirm naming preference:
+
+1. **c2 services naming:**
+   - c2_pet_feedback ✅ (recommended)
+   - c2_pet_thoughts ✅ (recommended)
+   - c2_pet_engine ✅ (recommended)
+
+2. **c3 applications naming:**
+   - Option A: c3_statusline, c3_commands, c3_main (generic)
+   - Option B: c3_pet_statusline, c3_pet_commands, c3_pet_main (pet-prefixed)
+
+3. **LLM analysis location:**
+   - Option A: Merge into c2_pet_feedback (recommended)
+   - Option B: Separate c2_pet_llm package
+
+4. **c1 models naming:**
+   - Keep generic: c1_feedback_models, c1_animations ✅ (recommended)
+   - OR pet-prefix: c1_pet_feedback_models, c1_pet_animations
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. User confirms naming preferences
+2. Update TODO-modular-monolith-reorganization.txt with corrected names
+3. Update ANALYSIS-modular-monolith-research.txt with corrected mapping
+4. Continue with Stage 2 migration using correct names
+
+================================================================================
+END OF TODO
+================================================================================

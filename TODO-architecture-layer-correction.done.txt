@@ -1,0 +1,255 @@
+================================================================================
+TODO: Architecture Layer Correction - Database and LLM Foundation
+================================================================================
+Date: 2025-11-04
+Priority: HIGH - Architectural correction needed
+Status: PLANNING
+
+================================================================================
+ISSUE IDENTIFIED
+================================================================================
+
+Current plan places LLM providers and feedback database at the same layer (c1),
+but this violates layering principles:
+
+PROBLEM:
+- FeedbackDatabase (database abstraction) = c1 (Foundation)
+- LlmWrapper/LlmProviders (LLM clients) = c1 (Foundation)
+- Feedback services use BOTH database AND llm
+- This creates unclear dependency hierarchy
+
+USER CORRECTION:
+"llm and database libraries can be at c0, or application (pet) libraries can
+be moved to c2; base things like database and llm should not be at same level
+as llm"
+
+================================================================================
+ROOT CAUSE ANALYSIS
+================================================================================
+
+The issue is that we're mixing different TYPES of foundation components:
+
+Type 1: Pure infrastructure (databases, LLM clients, HTTP clients)
+Type 2: Domain models (pet models, feedback models)
+Type 3: Domain-specific data access (FeedbackDatabase with business logic)
+
+FeedbackDatabase is NOT pure infrastructure - it has domain-specific logic:
+- extractWorkspaceId() - domain-specific parsing
+- Violation tracking - domain-specific schema
+- Message metadata - domain-specific types
+
+LlmWrapper/Providers ARE pure infrastructure:
+- Generic LLM communication
+- HTTP abstraction
+- Provider pattern
+- No domain knowledge
+
+================================================================================
+PROPOSED SOLUTIONS
+================================================================================
+
+**OPTION 1: Introduce c0 Layer (Four-Layer Architecture)**
+
+c0 (Infrastructure):
+  - Pure database abstractions (generic DB client)
+  - Pure LLM clients (generic LLM wrapper)
+  - HTTP clients
+  - No domain knowledge
+
+c1 (Foundation):
+  - Domain models (PetState, FeedbackTypes)
+  - Domain-specific database (FeedbackDatabase)
+  - Configuration
+  - Animation data
+
+c2 (Services):
+  - Pet engine
+  - Feedback analysis
+  - Thought system
+
+c3 (Applications):
+  - Statusline display
+  - CLI commands
+
+Layer rules:
+- c0: stdlib + external only
+- c1: c0 + stdlib + external
+- c2: c0 + c1 + stdlib + external
+- c3: c0 + c1 + c2 + stdlib + external
+
+**OPTION 2: Move Application Logic to c2 (Keep Three Layers)**
+
+c1 (Foundation - Infrastructure Only):
+  - LLM clients (LlmWrapper, providers)
+  - Database client (generic SQLite wrapper)
+  - Configuration
+  - HTTP clients
+
+c2 (Services - Domain Logic):
+  - Domain models (PetState, FeedbackTypes)
+  - FeedbackDatabase (domain-specific DB operations)
+  - Pet engine
+  - Feedback analysis
+  - Thought system
+
+c3 (Applications):
+  - Statusline display
+  - CLI commands
+
+Layer rules:
+- c1: stdlib + external only (pure infrastructure)
+- c2: c1 + stdlib + external (domain + services)
+- c3: c1 + c2 + stdlib + external
+
+**OPTION 3: Split FeedbackDatabase (Recommended)**
+
+Keep three layers, but split FeedbackDatabase:
+
+c1 (Foundation):
+  - c1_database_client (generic SQLite wrapper)
+  - c1_llm_client (generic LLM wrapper)
+  - c1_config (configuration)
+  - c1_pet_models (pure data models)
+  - c1_feedback_models (pure data models)
+
+c2 (Services):
+  - c2_feedback_database (domain-specific DB schema + operations)
+    Uses: c1_database_client for DB operations
+    Uses: c1_feedback_models for types
+  - c2_pet_engine (pet logic)
+  - c2_feedback_service (feedback analysis)
+
+c3 (Applications):
+  - c3_statusline_display
+  - c3_pet_commands
+
+This maintains clean separation:
+- c1 = pure infrastructure + pure models
+- c2 = domain-specific logic using c1 infrastructure
+- c3 = user-facing applications
+
+================================================================================
+RECOMMENDED APPROACH
+================================================================================
+
+**OPTION 3 (Split FeedbackDatabase)** is recommended because:
+
+1. Maintains three-layer architecture (simpler than four layers)
+2. Clear separation between infrastructure and domain logic
+3. FeedbackDatabase is domain-specific, not generic infrastructure
+4. Aligns with user feedback about layering
+5. Minimal refactoring needed
+
+Changes needed:
+1. Keep c1_llm_client (generic LLM wrapper/providers)
+2. Keep c1_feedback_models (pure types)
+3. Move FeedbackDatabase to c2_feedback_database
+4. Extract generic SQLite operations to c1_database_client if needed
+   (or keep bun:sqlite direct usage)
+
+Updated package list:
+
+c1 Layer (9 packages → 8 packages):
+- c1_config
+- c1_animations
+- c1_pet_models
+- c1_feedback_models
+- c1_llm_client (LlmWrapper, LlmHttpProvider, GroqClient base)
+- c1_llm_factory
+- c1_llm_providers (GroqProvider, LMStudioProvider)
+- c1_llm_prompts
+
+c2 Layer (4 packages → 5 packages):
+- c2_feedback_database (moved from c1)
+- c2_pet_engine
+- c2_thought_system
+- c2_feedback_service
+- c2_llm_analysis
+
+c3 Layer (3 packages - unchanged):
+- c3_statusline_display
+- c3_pet_commands
+- c3_main
+
+Total: 16 packages (same count)
+
+================================================================================
+ALTERNATIVE: Four-Layer Architecture (c0-c3)
+================================================================================
+
+If we want maximum clarity, introduce c0 for pure infrastructure:
+
+c0 (Pure Infrastructure - 3 packages):
+- c0_database (generic DB wrapper)
+- c0_llm (generic LLM wrapper)
+- c0_http (HTTP client abstractions)
+
+c1 (Foundation - 6 packages):
+- c1_config
+- c1_animations
+- c1_pet_models
+- c1_feedback_models
+- c1_llm_prompts
+- c1_llm_factory
+
+c2 (Services - 5 packages):
+- c2_feedback_database
+- c2_llm_providers (uses c0_llm)
+- c2_pet_engine
+- c2_thought_system
+- c2_feedback_service
+
+c3 (Applications - 3 packages):
+- c3_statusline_display
+- c3_pet_commands
+- c3_main
+
+Total: 17 packages
+
+Layer rules:
+- c0: stdlib + external only
+- c1: c0 + stdlib + external
+- c2: c0 + c1 + stdlib + external
+- c3: c0 + c1 + c2 + stdlib + external
+
+Benefits:
+- Crystal clear infrastructure vs domain separation
+- Easier to understand what goes where
+- Aligns with dependency inversion principle
+
+Drawbacks:
+- More complex than three layers
+- Adds another layer to manage
+- May be overkill for this project size
+
+================================================================================
+DECISION NEEDED
+================================================================================
+
+User should choose:
+
+1. **Option 3 (Recommended)**: Three layers, move FeedbackDatabase to c2
+   - Simpler, maintains three-layer pattern
+   - Clear: c1=infrastructure+models, c2=domain logic, c3=apps
+
+2. **Option 1 (Alternative)**: Four layers (c0-c3)
+   - More explicit separation
+   - Better for larger projects
+   - Slightly more complex
+
+User feedback indicated: "base things like database and llm should not be at
+same level as llm" - this suggests they want infrastructure separated from
+domain-specific database usage.
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. User decides: Three-layer (Option 3) or Four-layer (Option 1)?
+2. Update TODO-modular-monolith-reorganization.txt with chosen approach
+3. Update ANALYSIS-modular-monolith-research.txt file mapping
+4. Continue c1 migration with corrected layer assignments
+
+================================================================================
+END OF TODO
+================================================================================

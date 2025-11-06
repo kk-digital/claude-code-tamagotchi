@@ -1,0 +1,148 @@
+================================================================================
+MODULAR MONOLITH REFACTORING - BASELINE
+================================================================================
+
+Date: 2025-11-04
+Branch: refactor/modular-monolith
+Commit: 337a177 (main) - Starting point before refactoring
+
+================================================================================
+TEST BASELINE
+================================================================================
+
+Test Suite: test-complete.sh
+Status: ALL TESTS PASSED ✅
+Total Tests: 18
+Passed: 18
+Failed: 0
+
+Test Results:
+- Test 1: Check .env file exists... PASS
+- Test 2: Check PET_LLM_PROVIDER is set... PASS
+- Test 3: Check LM_STUDIO_ENABLED is set... PASS
+- Test 4: Check LM_STUDIO_URL is set... PASS
+- Test 5: Check LM_STUDIO_MODEL is set... PASS
+- Test 6: Check LM Studio server is reachable... PASS
+- Test 7: List available models... PASS (69 models found)
+- Test 8: Check configured model is available... PASS
+- Test 9: Check OpenAI embedding models available... PASS (7 models, jina excluded)
+- Test 10: Test embedding API endpoint... PASS (768 dimensions)
+- Test 11: Test chat completion endpoint (simple)... PASS
+- Test 12: Test prime numbers generation... PASS
+- Test 13: Measure response time... PASS (193ms)
+- Test 14: Check bun runtime is available... PASS (v1.3.1)
+- Test 15: Check node_modules directory exists... PASS (40 packages)
+- Test 16: Check jq is available... PASS
+- Test 17: Check TypeScript compiles... PASS
+- Test 18: Check application runs (smoke test)... PASS
+
+================================================================================
+CODEBASE METRICS (Before Refactoring)
+================================================================================
+
+Total TypeScript Files: 30
+Total Lines of Code: 10,215
+Average File Size: 340 lines
+
+Files by Size:
+- Large (800+ lines): 3 files (GroqClient: 952, GroqProvider: 890, LMStudioProvider: 871)
+- Medium (300-799 lines): 10 files
+- Small (< 300 lines): 17 files
+
+Directory Structure:
+src/
+├── animations/         (1 file,  237 lines)
+├── commands/           (4 files, 459 lines)
+├── engine/
+│   ├── feedback/      (5 files, 1,845 lines)
+│   └── thoughts/      (5 files, 1,657 lines)
+│   └── core/          (6 files, 1,876 lines)
+├── llm/
+│   └── providers/     (2 files, 1,761 lines)
+│   └── core/          (4 files, 1,369 lines)
+├── utils/             (1 file,  216 lines)
+└── workers/           (1 file,  669 lines)
+
+Nesting Depth: 3 levels (engine/feedback/, llm/providers/)
+Package Count: N/A (no modular structure yet)
+Circular Dependencies: None detected ✅
+
+================================================================================
+TYPESCRIPT CONFIGURATION
+================================================================================
+
+Runtime: Bun v1.3.1
+TypeScript Compilation: Successful
+Build Time: ~38ms (91 modules bundled)
+Target: node
+
+================================================================================
+EXTERNAL DEPENDENCIES
+================================================================================
+
+Runtime Dependencies:
+- groq-sdk (Groq API client)
+- bun:sqlite (SQLite database)
+- dotenv (Environment variables)
+- Node.js built-ins: fs, path, os, child_process
+
+Development Dependencies:
+- TypeScript
+- Bun runtime
+
+================================================================================
+DOCKER ENVIRONMENT
+================================================================================
+
+Container: docker-tamagotchi
+SSH Port: 8224
+Working Directory: /home/user/tamagotchi-dev
+Network: host.docker.internal for LM Studio access
+Tools Installed: bun, jq, git, ssh
+
+================================================================================
+SUCCESS CRITERIA FOR REFACTORING
+================================================================================
+
+Required (MUST):
+- [ ] All 18 tests still pass
+- [ ] TypeScript compiles without errors
+- [ ] No circular dependencies
+- [ ] Layer dependency rules validated (c1→c2→c3)
+- [ ] All files in flat package structure at src/ level
+- [ ] No nested folders under src/ (except package contents)
+
+Desired (SHOULD):
+- [ ] Average file size reduced (target: < 250 lines)
+- [ ] Large files split (3 files 800+ lines → multiple smaller files)
+- [ ] Clear layer separation visible in file names
+- [ ] Architecture validator script passes
+
+================================================================================
+REFACTORING PLAN REFERENCE
+================================================================================
+
+Documents:
+- TODO-modular-monolith-reorganization.txt (strategy, 6 stages)
+- ANALYSIS-modular-monolith-research.txt (research, file mapping)
+
+Proposed Structure:
+- 16 packages total (c1: 9, c2: 4, c3: 3)
+- 45 files after refactoring (15 new from splits)
+- Average file size: 227 lines (reduced from 340)
+
+Estimated Effort: 17-24 hours
+
+================================================================================
+STAGE 0: PREPARATION - CHECKLIST
+================================================================================
+
+- [x] Create refactoring branch (refactor/modular-monolith)
+- [x] Run test baseline (18/18 passing)
+- [x] Document baseline state (this file)
+- [ ] Create architecture validation script
+- [ ] Create detailed file-by-file migration plan
+
+================================================================================
+END OF BASELINE
+================================================================================

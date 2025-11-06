@@ -1,0 +1,722 @@
+================================================================================
+CLAUDE CODE TAMAGOTCHI - LLM INTEGRATION ANALYSIS
+================================================================================
+Analysis Date: 2025-11-03
+Purpose: Identify all external LLM usage for wrapper abstraction
+Goal: Support both Groq and LM Studio (gpt-oss-120b) providers
+
+================================================================================
+SUMMARY
+================================================================================
+
+CURRENT STATE:
+- Single LLM provider: Groq (via groq-sdk)
+- Hardcoded API client in src/llm/GroqClient.ts
+- Configuration in src/utils/config.ts
+- Used by: FeedbackSystem, TranscriptAnalyzer, analyze-transcript worker
+
+IDENTIFIED FILES WITH LLM USAGE:
+1. src/llm/GroqClient.ts              (Direct LLM API client)
+2. src/utils/config.ts                (Configuration for Groq)
+3. src/workers/analyze-transcript.ts  (Worker using GroqClient)
+4. src/engine/feedback/FeedbackSystem.ts         (Uses TranscriptAnalyzer)
+5. src/engine/feedback/TranscriptAnalyzer.ts     (Creates GroqClient instances)
+
+AUTHENTICATION/API KEYS:
+- Environment variable: PET_GROQ_API_KEY or GROQ_API_KEY
+- Configured in: src/utils/config.ts
+- Used by: GroqClient constructor
+
+PROPOSED ARCHITECTURE:
+- Create LlmWrapper base class/interface
+- Implement GroqProvider (existing logic)
+- Implement LMStudioProvider (new - uses OpenAI-compatible API)
+- Add LlmWrapperSettings for provider selection and configuration
+- Refactor all code to use LlmWrapper instead of GroqClient directly
+
+
+================================================================================
+DETAILED FILE ANALYSIS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+1. src/llm/GroqClient.ts (PRIMARY LLM CLIENT)
+──────────────────────────────────────────────────────────────────────────────
+
+CURRENT IMPLEMENTATION:
+- Direct dependency on 'groq-sdk' package
+- Constructor: new GroqClient(apiKey, model, timeout, maxRetries, dbPath)
+- Three main methods:
+  1. analyzeUserMessage(userMessage, sessionHistory)
+  2. analyzeExchange(userRequest, claudeActions, sessionHistory, ...)
+  3. callGroqWithTimeout(prompt) - private
+
+API CALLS:
+- Method: client.chat.completions.create()
+- Endpoint: Groq API (https://api.groq.com/...)
+- Request format:
+  {
+    messages: [
+      { role: 'system', content: 'system prompt' },
+      { role: 'user', content: 'user prompt' }
+    ],
+    model: this.model,
+    temperature: 0.75,
+    max_completion_tokens: 3000,
+    response_format: { type: 'json_object' }
+  }
+
+CONFIGURATION USED:
+- this.model (from config.groqModel)
+- this.timeout (from config.groqTimeout)
+- this.maxRetries (from config.groqMaxRetries)
+- apiKey (from config.groqApiKey or env var)
+
+FEATURES:
+- Timeout handling with AbortController
+- Retry logic (max 2 retries by default)
+- JSON response parsing
+- Fallback to default analysis on failure
+- Logging and debugging support
+- Database integration for storing violations
+
+REPLACEMENT NEEDS:
+- Abstract the API client interface
+- Support both Groq SDK and OpenAI-compatible HTTP client
+- Maintain all existing features (timeout, retry, fallback)
+- Keep the same public method signatures
+
+
+──────────────────────────────────────────────────────────────────────────────
+2. src/utils/config.ts (CONFIGURATION)
+──────────────────────────────────────────────────────────────────────────────
+
+CURRENT LLM CONFIGURATION:
+```typescript
+export interface PetConfig {
+  // ... other config ...
+
+  groqApiKey?: string;
+  groqModel: string;
+  groqTimeout: number;
+  groqMaxRetries: number;
+}
+
+export const config: PetConfig = {
+  // ... other config ...
+
+  groqApiKey: process.env.PET_GROQ_API_KEY || process.env.GROQ_API_KEY,
+  groqModel: process.env.PET_GROQ_MODEL || 'openai/gpt-oss-20b',
+  groqTimeout: parseInt(process.env.PET_GROQ_TIMEOUT || '2000'),
+  groqMaxRetries: parseInt(process.env.PET_GROQ_MAX_RETRIES || '2'),
+};
+```
+
+REPLACEMENT NEEDS:
+- Add provider selection: 'groq' | 'lmstudio' | 'openai'
+- Add LM Studio configuration:
+  - LM Studio URL (http://host.docker.internal:1234/v1)
+  - LM Studio model (openai/gpt-oss-120b)
+  - LM Studio API key (optional - not required for local LM Studio)
+- Keep backward compatibility with existing groq* environment variables
+- Add new environment variables:
+  - LM_STUDIO_ENABLED=true/false
+  - LM_STUDIO_URL=http://...
+  - LM_STUDIO_MODEL=openai/gpt-oss-120b
+  - LLM_PROVIDER=groq|lmstudio
+
+
+──────────────────────────────────────────────────────────────────────────────
+3. src/workers/analyze-transcript.ts (BACKGROUND WORKER)
+──────────────────────────────────────────────────────────────────────────────
+
+CURRENT USAGE:
+```typescript
+import { GroqClient } from '../llm/GroqClient';
+
+const config = {
+  groqApiKey: process.env.PET_GROQ_API_KEY,
+  groqModel: process.env.PET_GROQ_MODEL || 'openai/gpt-oss-20b',
+  groqTimeout: parseInt(process.env.PET_GROQ_TIMEOUT || '2000'),
+};
+
+const groq = new GroqClient(
+  config.groqApiKey,
+  config.groqModel,
+  config.groqTimeout,
+  2,
+  dbPath
+);
+
+// Later in the code:
+const analysis = await groq.analyzeUserMessage(userMessage, context);
+const analysis = await groq.analyzeExchange(userRequest, claudeActions, ...);
+```
+
+REPLACEMENT NEEDS:
+- Import LlmWrapper instead of GroqClient
+- Create appropriate provider based on configuration
+- Maintain same interface (analyzeUserMessage, analyzeExchange)
+
+
+──────────────────────────────────────────────────────────────────────────────
+4. src/engine/feedback/FeedbackSystem.ts (FEEDBACK ORCHESTRATOR)
+──────────────────────────────────────────────────────────────────────────────
+
+CURRENT USAGE:
+- Does NOT directly use GroqClient
+- Uses TranscriptAnalyzer which internally creates GroqClient
+- Passes configuration to TranscriptAnalyzer:
+  ```typescript
+  const feedbackConfig: FeedbackConfig = {
+    enabled: config.feedbackEnabled,
+    mode: config.feedbackMode,
+    groqApiKey: config.groqApiKey,
+    groqModel: config.groqModel,
+    groqTimeout: config.groqTimeout,
+    groqMaxRetries: config.groqMaxRetries
+  };
+
+  this.analyzer = new TranscriptAnalyzer(feedbackConfig);
+  ```
+
+REPLACEMENT NEEDS:
+- Update FeedbackConfig interface to include LLM provider settings
+- Pass provider configuration to TranscriptAnalyzer
+
+
+──────────────────────────────────────────────────────────────────────────────
+5. src/engine/feedback/TranscriptAnalyzer.ts (TRANSCRIPT ANALYSIS)
+──────────────────────────────────────────────────────────────────────────────
+
+CURRENT USAGE:
+```typescript
+import { GroqClient } from '../../llm/GroqClient';
+
+// Inside TranscriptAnalyzer class:
+private createGroqClient(): GroqClient {
+  return new GroqClient(
+    this.config.groqApiKey,
+    this.config.groqModel,
+    this.config.groqTimeout,
+    this.config.groqMaxRetries,
+    this.config.dbPath
+  );
+}
+
+// Later:
+const groq = this.createGroqClient();
+const analysis = await groq.analyzeExchange(...);
+```
+
+REPLACEMENT NEEDS:
+- Rename createGroqClient() to createLlmClient()
+- Return LlmWrapper instance (Groq or LMStudio provider)
+- Factory pattern to select provider based on config
+
+
+================================================================================
+LLM WRAPPER ARCHITECTURE DESIGN
+================================================================================
+
+PROPOSED STRUCTURE:
+
+src/llm/
+├── LlmWrapper.ts              (Interface/abstract class)
+├── providers/
+│   ├── GroqProvider.ts        (Existing Groq logic)
+│   ├── LMStudioProvider.ts    (New LM Studio support)
+│   └── OpenAIProvider.ts      (Future: native OpenAI support)
+├── LlmWrapperSettings.ts      (Configuration types)
+└── LlmWrapperFactory.ts       (Provider selection and instantiation)
+
+INTERFACE DEFINITION (LlmWrapper.ts):
+```typescript
+export interface LlmWrapperSettings {
+  provider: 'groq' | 'lmstudio' | 'openai';
+  apiKey?: string;
+  model: string;
+  timeout: number;
+  maxRetries: number;
+
+  // Provider-specific settings
+  groqSettings?: {
+    apiKey?: string;
+    model?: string;
+  };
+
+  lmstudioSettings?: {
+    url: string;              // http://host.docker.internal:1234/v1
+    model: string;            // openai/gpt-oss-120b
+    apiKey?: string;          // Optional for local LM Studio
+  };
+
+  openaiSettings?: {
+    apiKey: string;
+    model: string;
+    organization?: string;
+  };
+}
+
+export interface LlmResponse {
+  content: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+export abstract class LlmWrapper {
+  protected settings: LlmWrapperSettings;
+  protected timeout: number;
+  protected maxRetries: number;
+
+  constructor(settings: LlmWrapperSettings) {
+    this.settings = settings;
+    this.timeout = settings.timeout;
+    this.maxRetries = settings.maxRetries;
+  }
+
+  // Core methods (same as current GroqClient)
+  abstract analyzeUserMessage(
+    userMessage: string,
+    sessionHistory: string[]
+  ): Promise<{ summary: string; intent: string }>;
+
+  abstract analyzeExchange(
+    userRequest: string,
+    claudeActions: string[],
+    sessionHistory: string[],
+    projectContext?: string,
+    petState?: any,
+    sessionId?: string,
+    messageUuid?: string,
+    workspaceId?: string
+  ): Promise<LLMAnalysisResult>;
+
+  // Protected helper for provider implementations
+  protected abstract callLlmWithTimeout(prompt: string): Promise<LlmResponse>;
+}
+```
+
+GROQ PROVIDER (src/llm/providers/GroqProvider.ts):
+```typescript
+import Groq from 'groq-sdk';
+import { LlmWrapper, LlmWrapperSettings, LlmResponse } from '../LlmWrapper';
+
+export class GroqProvider extends LlmWrapper {
+  private client: Groq | null = null;
+
+  constructor(settings: LlmWrapperSettings) {
+    super(settings);
+
+    const apiKey = settings.groqSettings?.apiKey || settings.apiKey;
+    if (apiKey) {
+      this.client = new Groq({ apiKey });
+    }
+  }
+
+  protected async callLlmWithTimeout(prompt: string): Promise<LlmResponse> {
+    if (!this.client) {
+      throw new Error('Groq client not initialized (no API key)');
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const completion = await this.client.chat.completions.create({
+        messages: [
+          { role: 'system', content: 'You are analyzing Claude Code behavior. Respond with JSON only.' },
+          { role: 'user', content: prompt }
+        ],
+        model: this.settings.groqSettings?.model || this.settings.model,
+        temperature: 0.75,
+        max_completion_tokens: 3000,
+        response_format: { type: 'json_object' }
+      }, {
+        signal: controller.signal as any
+      });
+
+      clearTimeout(timeoutId);
+
+      return {
+        content: completion.choices[0]?.message?.content || '{}',
+        usage: {
+          prompt_tokens: completion.usage?.prompt_tokens || 0,
+          completion_tokens: completion.usage?.completion_tokens || 0,
+          total_tokens: completion.usage?.total_tokens || 0
+        }
+      };
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+
+      if (error.name === 'AbortError') {
+        throw new Error(`Groq API timeout after ${this.timeout}ms`);
+      }
+
+      throw error;
+    }
+  }
+
+  // Implement analyzeUserMessage and analyzeExchange using same logic as current GroqClient
+}
+```
+
+LM STUDIO PROVIDER (src/llm/providers/LMStudioProvider.ts):
+```typescript
+import { LlmWrapper, LlmWrapperSettings, LlmResponse } from '../LlmWrapper';
+
+export class LMStudioProvider extends LlmWrapper {
+  private baseUrl: string;
+  private model: string;
+  private apiKey?: string;
+
+  constructor(settings: LlmWrapperSettings) {
+    super(settings);
+
+    if (!settings.lmstudioSettings) {
+      throw new Error('LM Studio settings are required');
+    }
+
+    this.baseUrl = settings.lmstudioSettings.url;
+    this.model = settings.lmstudioSettings.model;
+    this.apiKey = settings.lmstudioSettings.apiKey;
+  }
+
+  protected async callLlmWithTimeout(prompt: string): Promise<LlmResponse> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+
+      if (this.apiKey) {
+        headers['Authorization'] = `Bearer ${this.apiKey}`;
+      }
+
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            { role: 'system', content: 'You are analyzing Claude Code behavior. Respond with JSON only.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.75,
+          max_tokens: 3000,
+          response_format: { type: 'json_object' }
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`LM Studio API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      return {
+        content: data.choices[0]?.message?.content || '{}',
+        usage: data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+      };
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+
+      if (error.name === 'AbortError') {
+        throw new Error(`LM Studio API timeout after ${this.timeout}ms`);
+      }
+
+      throw error;
+    }
+  }
+
+  // Implement analyzeUserMessage and analyzeExchange using same logic as current GroqClient
+}
+```
+
+FACTORY (src/llm/LlmWrapperFactory.ts):
+```typescript
+import { LlmWrapper, LlmWrapperSettings } from './LlmWrapper';
+import { GroqProvider } from './providers/GroqProvider';
+import { LMStudioProvider } from './providers/LMStudioProvider';
+
+export class LlmWrapperFactory {
+  static create(settings: LlmWrapperSettings): LlmWrapper {
+    switch (settings.provider) {
+      case 'groq':
+        return new GroqProvider(settings);
+
+      case 'lmstudio':
+        return new LMStudioProvider(settings);
+
+      // Future providers:
+      // case 'openai':
+      //   return new OpenAIProvider(settings);
+
+      default:
+        throw new Error(`Unknown LLM provider: ${settings.provider}`);
+    }
+  }
+}
+```
+
+
+================================================================================
+CONFIGURATION UPDATES
+================================================================================
+
+UPDATE src/utils/config.ts:
+```typescript
+export interface PetConfig {
+  // ... existing config ...
+
+  // LLM Provider Selection
+  llmProvider: 'groq' | 'lmstudio' | 'auto';  // 'auto' tries LM Studio → Groq
+
+  // Groq Settings (existing)
+  groqApiKey?: string;
+  groqModel: string;
+  groqTimeout: number;
+  groqMaxRetries: number;
+
+  // LM Studio Settings (new)
+  lmstudioEnabled: boolean;
+  lmstudioUrl: string;
+  lmstudioModel: string;
+  lmstudioApiKey?: string;  // Optional
+  lmstudioTimeout: number;
+  lmstudioMaxRetries: number;
+}
+
+export const config: PetConfig = {
+  // ... existing config ...
+
+  // LLM Provider
+  llmProvider: (process.env.LLM_PROVIDER as any) || 'auto',
+
+  // Groq (existing)
+  groqApiKey: process.env.PET_GROQ_API_KEY || process.env.GROQ_API_KEY,
+  groqModel: process.env.PET_GROQ_MODEL || 'openai/gpt-oss-20b',
+  groqTimeout: parseInt(process.env.PET_GROQ_TIMEOUT || '2000'),
+  groqMaxRetries: parseInt(process.env.PET_GROQ_MAX_RETRIES || '2'),
+
+  // LM Studio (new)
+  lmstudioEnabled: process.env.LM_STUDIO_ENABLED === 'true',
+  lmstudioUrl: process.env.LM_STUDIO_URL || 'http://host.docker.internal:1234/v1',
+  lmstudioModel: process.env.LM_STUDIO_MODEL || 'openai/gpt-oss-120b',
+  lmstudioApiKey: process.env.LM_STUDIO_API_KEY,
+  lmstudioTimeout: parseInt(process.env.LM_STUDIO_TIMEOUT || '5000'),  // Higher timeout for local model
+  lmstudioMaxRetries: parseInt(process.env.LM_STUDIO_MAX_RETRIES || '1'),  // Fewer retries for local
+};
+```
+
+ENVIRONMENT VARIABLES (.bashrc):
+```bash
+# LLM Provider Selection
+export LLM_PROVIDER=auto              # auto|groq|lmstudio
+
+# Groq Settings (existing)
+export GROQ_API_KEY="gsk_your_key_here"
+export PET_GROQ_MODEL="openai/gpt-oss-20b"
+export PET_GROQ_TIMEOUT="2000"
+export PET_GROQ_MAX_RETRIES="2"
+
+# LM Studio Settings (new)
+export LM_STUDIO_ENABLED=true
+export LM_STUDIO_URL="http://host.docker.internal:1234/v1"
+export LM_STUDIO_MODEL="openai/gpt-oss-120b"
+# export LM_STUDIO_API_KEY=""        # Optional - not needed for local LM Studio
+export LM_STUDIO_TIMEOUT="5000"
+export LM_STUDIO_MAX_RETRIES="1"
+```
+
+
+================================================================================
+REFACTORING CHECKLIST
+================================================================================
+
+PHASE 1: Create LlmWrapper Infrastructure
+[_] Create src/llm/LlmWrapper.ts (interface + abstract class)
+[_] Create src/llm/LlmWrapperSettings.ts (configuration types)
+[_] Create src/llm/LlmWrapperFactory.ts (provider factory)
+[_] Create src/llm/providers/ directory
+
+PHASE 2: Implement Providers
+[_] Create src/llm/providers/GroqProvider.ts
+    [_] Copy logic from src/llm/GroqClient.ts
+    [_] Extend LlmWrapper abstract class
+    [_] Implement analyzeUserMessage()
+    [_] Implement analyzeExchange()
+    [_] Implement callLlmWithTimeout()
+    [_] Test with existing Groq API key
+
+[_] Create src/llm/providers/LMStudioProvider.ts
+    [_] Implement OpenAI-compatible HTTP client
+    [_] Extend LlmWrapper abstract class
+    [_] Implement analyzeUserMessage()
+    [_] Implement analyzeExchange()
+    [_] Implement callLlmWithTimeout()
+    [_] Test with local LM Studio (gpt-oss-120b)
+
+PHASE 3: Update Configuration
+[_] Update src/utils/config.ts
+    [_] Add llmProvider field
+    [_] Add lmstudio* configuration fields
+    [_] Keep groq* fields for backward compatibility
+    [_] Add helper function to build LlmWrapperSettings from config
+
+PHASE 4: Refactor Existing Code
+[_] Update src/engine/feedback/TranscriptAnalyzer.ts
+    [_] Replace import of GroqClient with LlmWrapperFactory
+    [_] Rename createGroqClient() to createLlmClient()
+    [_] Use LlmWrapperFactory.create() with settings
+    [_] Pass provider configuration from config
+
+[_] Update src/workers/analyze-transcript.ts
+    [_] Replace import of GroqClient with LlmWrapperFactory
+    [_] Create LlmWrapper instance using factory
+    [_] Use same interface (analyzeUserMessage, analyzeExchange)
+
+[_] Update src/engine/feedback/FeedbackSystem.ts
+    [_] Update FeedbackConfig interface to include LLM provider settings
+    [_] Pass provider configuration to TranscriptAnalyzer
+
+[_] Update src/engine/feedback/types.ts
+    [_] Add LLM provider fields to FeedbackConfig interface
+
+PHASE 5: Deprecate Old Code (Optional - for now keep backward compat)
+[_] Mark src/llm/GroqClient.ts as deprecated
+[_] Add migration notice to GroqClient.ts
+[_] Eventually remove GroqClient.ts after full migration
+
+PHASE 6: Testing
+[_] Test with Groq provider (should work exactly as before)
+[_] Test with LM Studio provider (gpt-oss-120b)
+[_] Test with LM Studio provider (gpt-oss-20b)
+[_] Test provider fallback (auto mode: LM Studio → Groq)
+[_] Test timeout and retry logic
+[_] Test error handling and default fallback
+[_] Compare feedback quality between providers
+
+PHASE 7: Documentation
+[_] Update README.md with LM Studio setup instructions
+[_] Update LMSTUDIO-ACCESS.txt with integration details
+[_] Document environment variables in USAGE-GUIDE.txt
+[_] Add examples to USAGE-GUIDE.txt
+[_] Create .env.example with all LLM configuration options
+
+
+================================================================================
+BACKWARD COMPATIBILITY NOTES
+================================================================================
+
+KEEP EXISTING:
+- All groq* environment variables (GROQ_API_KEY, PET_GROQ_MODEL, etc.)
+- Existing GroqClient.ts file (mark as deprecated but keep functional)
+- Existing configuration interface fields
+
+ENSURE:
+- If no LLM_PROVIDER is set, default to 'auto' mode
+- Auto mode tries: LM Studio (if enabled) → Groq (if API key) → Offline fallback
+- If neither provider available, use default fallback analysis (no LLM)
+- All existing code continues to work without changes if using Groq
+
+
+================================================================================
+TESTING PLAN
+================================================================================
+
+TEST 1: Groq Provider Verification
+- Set LLM_PROVIDER=groq
+- Set GROQ_API_KEY to valid key
+- Run violation-check
+- Verify same behavior as before refactoring
+
+TEST 2: LM Studio Provider (120b model)
+- Set LLM_PROVIDER=lmstudio
+- Set LM_STUDIO_MODEL=openai/gpt-oss-120b
+- Verify LM Studio is running
+- Run violation-check
+- Verify feedback is generated
+- Compare quality with Groq output
+
+TEST 3: LM Studio Provider (20b model)
+- Set LM_STUDIO_MODEL=openai/gpt-oss-20b
+- Run violation-check
+- Compare speed and quality with 120b
+
+TEST 4: Auto Fallback Mode
+- Set LLM_PROVIDER=auto
+- Test with LM Studio running (should use LM Studio)
+- Test with LM Studio stopped (should fallback to Groq)
+- Test with both unavailable (should use offline fallback)
+
+TEST 5: Error Handling
+- Test timeout scenarios
+- Test invalid model names
+- Test network errors
+- Verify graceful degradation
+
+TEST 6: Performance Comparison
+- Measure response time: LM Studio 120b vs Groq
+- Measure response time: LM Studio 20b vs Groq
+- Compare memory usage
+- Document performance characteristics
+
+
+================================================================================
+IMPLEMENTATION PRIORITY
+================================================================================
+
+PHASE 1 (CRITICAL - DO FIRST):
+1. Create LlmWrapper.ts interface + abstract class
+2. Create LlmWrapperSettings.ts types
+3. Create LlmWrapperFactory.ts
+4. Update config.ts with new settings
+
+PHASE 2 (HIGH PRIORITY):
+5. Implement GroqProvider.ts (migrate existing GroqClient logic)
+6. Implement LMStudioProvider.ts (new OpenAI-compatible client)
+7. Test both providers independently
+
+PHASE 3 (MEDIUM PRIORITY):
+8. Refactor TranscriptAnalyzer.ts to use factory
+9. Refactor analyze-transcript.ts worker
+10. Refactor FeedbackSystem.ts configuration
+
+PHASE 4 (LOW PRIORITY):
+11. Comprehensive testing
+12. Documentation updates
+13. Performance benchmarking
+14. Optional: Deprecate old GroqClient
+
+
+================================================================================
+SUCCESS CRITERIA
+================================================================================
+
+MUST HAVE:
+✅ LM Studio provider works with gpt-oss-120b model
+✅ Existing Groq functionality unchanged (backward compatible)
+✅ Auto fallback works (LM Studio → Groq → offline)
+✅ Configuration via environment variables
+✅ All existing tests pass
+
+NICE TO HAVE:
+◯ Performance metrics and comparison
+◯ Quality comparison between providers
+◯ OpenAI provider for future expansion
+◯ Provider health monitoring
+◯ Automatic provider selection based on response quality
+
+
+================================================================================
+END OF LLM INTEGRATION ANALYSIS
+================================================================================

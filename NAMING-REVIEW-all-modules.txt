@@ -1,0 +1,459 @@
+================================================================================
+NAMING REVIEW: All Modules - Function, Correctness, and Common Prefixes
+================================================================================
+Date: 2025-11-04
+Purpose: Review all module names for correctness, specificity, and consistency
+
+================================================================================
+NAMING PRINCIPLES
+================================================================================
+
+1. **Common Prefix Rule**: Related modules should share a common domain prefix
+   - Example: pet_feedback, pet_thoughts, pet_engine (all "pet_" prefix)
+
+2. **Specificity Rule**: Names should be specific, not generic
+   - BAD: "feedback" (feedback for what?)
+   - GOOD: "pet_feedback" (pet behavior feedback)
+
+3. **Function Clarity**: Name should describe what the module DOES
+   - Pattern: {domain}_{function}
+   - Example: pet_feedback (pet domain, feedback function)
+
+4. **Layer Prefix**: c{N}_ prefix indicates architectural layer
+   - c1_ = Foundation (models, infrastructure)
+   - c2_ = Services (business logic)
+   - c3_ = Applications (UI, CLI)
+
+================================================================================
+CURRENT c1 LAYER (Foundation) - REVIEW
+================================================================================
+
+Module: c1_config
+Function: Configuration loading and validation
+Common Prefix: NONE (standalone utility)
+Specificity: GENERIC
+Review: ✅ CORRECT - Configuration is generic, not domain-specific
+Suggestion: KEEP AS-IS
+
+---
+
+Module: c1_animations
+Function: Animation sprite data
+Common Prefix: NONE (should be "pet"?)
+Specificity: GENERIC (animations for what?)
+Review: ⚠️  NEEDS PREFIX - Should be pet-specific
+Suggestion: c1_pet_animations
+Reason: Animations are PET sprites, not generic animations
+
+---
+
+Module: c1_feedback_models
+Function: Feedback type definitions
+Common Prefix: "feedback" (should be "pet_feedback"?)
+Specificity: PARTIAL (feedback models for what domain?)
+Review: ⚠️  NEEDS PREFIX - Should be pet-specific
+Suggestion: c1_pet_feedback_models
+Reason: Feedback is about PET behavior, not generic feedback
+
+---
+
+Module: c1_llm_client
+Function: LLM wrapper base classes
+Common Prefix: "llm"
+Specificity: GOOD (LLM client infrastructure)
+Review: ✅ CORRECT - Generic LLM infrastructure
+Suggestion: KEEP AS-IS
+Reason: Could be reused for non-pet LLM tasks
+
+---
+
+Module: c1_llm_providers
+Function: LLM provider implementations (Groq, LMStudio)
+Common Prefix: "llm"
+Specificity: GOOD
+Review: ✅ CORRECT - Generic LLM providers
+Suggestion: KEEP AS-IS
+
+---
+
+Module: c1_llm_factory
+Function: Factory for creating LLM providers
+Common Prefix: "llm"
+Specificity: GOOD
+Review: ✅ CORRECT - Generic LLM factory
+Suggestion: KEEP AS-IS
+
+---
+
+Module: c1_feedback_database (TO BE MOVED TO c2)
+Function: Feedback database operations
+Common Prefix: "feedback" (should be "pet_feedback"?)
+Specificity: PARTIAL
+Review: ⚠️  NEEDS PREFIX + LAYER MOVE
+Suggestion: c2_pet_feedback_database OR merge into c2_pet_feedback
+Reason: Database has pet-specific logic, belongs in c2
+
+================================================================================
+PROPOSED c2 LAYER (Services) - REVIEW
+================================================================================
+
+Module: c2_feedback_service (PROPOSED - WRONG)
+Function: Feedback system orchestration
+Common Prefix: "feedback" (should be "pet_feedback")
+Specificity: GENERIC (feedback service for what?)
+Review: ❌ WRONG - Too generic
+Suggestion: c2_pet_feedback
+Reason: This is PET behavior feedback, not generic feedback service
+
+---
+
+Module: c2_thought_system (PROPOSED - WRONG)
+Function: Thought generation for pet
+Common Prefix: "thought" (should be "pet_thought")
+Specificity: GENERIC (thought system for what?)
+Review: ❌ WRONG - Too generic
+Suggestion: c2_pet_thoughts
+Reason: Generates PET thoughts, not generic thought system
+
+---
+
+Module: c2_pet_engine (PROPOSED - CORRECT)
+Function: Pet state management and orchestration
+Common Prefix: "pet"
+Specificity: GOOD
+Review: ✅ CORRECT
+Suggestion: KEEP AS-IS
+
+---
+
+Module: c2_llm_analysis (PROPOSED - QUESTIONABLE)
+Function: LLM analysis for feedback
+Common Prefix: "llm"
+Specificity: GENERIC (LLM analysis for what domain?)
+Review: ⚠️  NEEDS REVIEW
+Options:
+  A. c2_pet_llm (pet-specific LLM analysis)
+  B. Merge into c2_pet_feedback (recommended)
+  C. Keep generic c2_llm_analysis
+Suggestion: MERGE into c2_pet_feedback
+Reason: Only used for pet feedback, not generic LLM analysis
+
+================================================================================
+PROPOSED c3 LAYER (Applications) - REVIEW
+================================================================================
+
+Module: c3_statusline_display (PROPOSED)
+Function: Statusline rendering for pet
+Common Prefix: NONE (should be "pet"?)
+Specificity: PARTIAL (statusline for what?)
+Review: ⚠️  NEEDS PREFIX
+Suggestion: c3_pet_statusline
+Reason: Displays PET statusline, not generic statusline
+
+---
+
+Module: c3_pet_commands (PROPOSED)
+Function: CLI commands for pet
+Common Prefix: "pet"
+Specificity: GOOD
+Review: ✅ CORRECT (if using pet prefix)
+Alternative: c3_commands (if c3 only has pet app)
+Suggestion: c3_pet_commands OR c3_commands
+Reason: Commands are pet-specific
+
+---
+
+Module: c3_main (PROPOSED)
+Function: Application entry point
+Common Prefix: NONE (should be "pet"?)
+Specificity: GENERIC
+Review: ⚠️  NEEDS PREFIX
+Suggestion: c3_pet_main OR keep c3_main
+Reason: Main entry point for pet application
+
+================================================================================
+CORRECTED NAMING SCHEME - ALL MODULES
+================================================================================
+
+**LAYER c1: Foundation (7 modules)**
+
+✅ c1_config
+   Function: Configuration loading
+   Prefix: NONE (generic)
+
+⚠️  c1_pet_animations (RENAMED from c1_animations)
+   Function: Pet animation sprite data
+   Prefix: pet_
+
+⚠️  c1_pet_feedback_models (RENAMED from c1_feedback_models)
+   Function: Pet feedback type definitions
+   Prefix: pet_feedback_
+
+✅ c1_llm_client
+   Function: LLM base classes
+   Prefix: llm_
+
+✅ c1_llm_providers
+   Function: LLM provider implementations
+   Prefix: llm_
+
+✅ c1_llm_factory
+   Function: LLM provider factory
+   Prefix: llm_
+
+---
+
+**LAYER c2: Services (3 modules)**
+
+✅ c2_pet_engine
+   Function: Pet state management, orchestration
+   Prefix: pet_
+   Includes:
+   - pet_engine.ts (orchestration)
+   - state_manager.ts (state management)
+   - pet_actions.ts (action handlers)
+   - pet_decay.ts (stat decay)
+   - activity_system.ts (activity tracking)
+   - animation_manager.ts (animation selection)
+
+✅ c2_pet_feedback (RENAMED from c2_feedback_service)
+   Function: Pet behavior monitoring and analysis
+   Prefix: pet_feedback_
+   Includes:
+   - feedback_system.ts (orchestration)
+   - feedback_database.ts (moved from c1)
+   - transcript_analyzer.ts (transcript parsing)
+   - message_processor.ts (message processing)
+   - feedback_worker.ts (background worker)
+   - LLM analysis logic (merged from c2_llm_analysis)
+
+✅ c2_pet_thoughts (RENAMED from c2_thought_system)
+   Function: Pet thought generation
+   Prefix: pet_thought_
+   Includes:
+   - thought_system.ts (orchestration)
+   - action_thoughts.ts
+   - coding_thoughts.ts
+   - combo_thoughts.ts
+   - need_thoughts.ts
+   - random_thoughts.ts
+
+---
+
+**LAYER c3: Applications (3 modules)**
+
+✅ c3_pet_statusline (RENAMED from c3_statusline_display)
+   Function: Pet statusline rendering
+   Prefix: pet_statusline_
+   Includes:
+   - pet_display.ts (display generation)
+   - display_formatter.ts (formatting helpers)
+
+✅ c3_pet_commands
+   Function: Pet CLI commands
+   Prefix: pet_command_
+   Includes:
+   - command_processor.ts
+   - cli.ts
+   - pet_cli.ts
+   - violation_check.ts
+
+✅ c3_pet_main (RENAMED from c3_main)
+   Function: Pet application entry point
+   Prefix: pet_
+   Includes:
+   - index.ts
+
+================================================================================
+NAMING PATTERN ANALYSIS
+================================================================================
+
+**Pet Domain Modules (All use "pet" prefix):**
+- c1_pet_animations
+- c1_pet_feedback_models
+- c2_pet_engine
+- c2_pet_feedback
+- c2_pet_thoughts
+- c3_pet_statusline
+- c3_pet_commands
+- c3_pet_main
+
+**LLM Infrastructure Modules (All use "llm" prefix):**
+- c1_llm_client
+- c1_llm_providers
+- c1_llm_factory
+
+**Generic Utility Modules (No prefix):**
+- c1_config
+
+**Total Modules: 13**
+- c1: 7 modules (6 with prefixes)
+- c2: 3 modules (all with "pet" prefix)
+- c3: 3 modules (all with "pet" prefix)
+
+**Common Prefixes:**
+- "pet_" prefix: 8 modules (pet domain)
+- "llm_" prefix: 3 modules (LLM infrastructure)
+- No prefix: 2 modules (generic utilities)
+
+================================================================================
+PREFIX CONSISTENCY ANALYSIS
+================================================================================
+
+**Pet Domain - Fully Prefixed:**
+✅ All pet-specific modules use "pet_" prefix
+✅ Sub-domains use compound prefixes:
+   - pet_feedback_ (feedback subdomain)
+   - pet_thought_ (thoughts subdomain)
+   - pet_statusline_ (statusline subdomain)
+   - pet_command_ (commands subdomain)
+
+**LLM Infrastructure - Fully Prefixed:**
+✅ All LLM modules use "llm_" prefix
+
+**Generic Utilities - No Prefix:**
+✅ Generic config has no prefix (correct)
+
+**Consistency Score: 100%** ✅
+All modules follow consistent naming with appropriate prefixes.
+
+================================================================================
+FUNCTION CLARITY ANALYSIS
+================================================================================
+
+Does the name clearly describe what the module DOES?
+
+c1_config → ✅ Loads configuration
+c1_pet_animations → ✅ Provides pet animation data
+c1_pet_feedback_models → ✅ Defines pet feedback types
+c1_llm_client → ✅ LLM client infrastructure
+c1_llm_providers → ✅ LLM provider implementations
+c1_llm_factory → ✅ Creates LLM providers
+
+c2_pet_engine → ✅ Manages pet state and logic
+c2_pet_feedback → ✅ Monitors and analyzes pet behavior
+c2_pet_thoughts → ✅ Generates pet thoughts
+
+c3_pet_statusline → ✅ Renders pet statusline
+c3_pet_commands → ✅ Handles pet CLI commands
+c3_pet_main → ✅ Pet application entry point
+
+**Clarity Score: 100%** ✅
+All module names clearly describe their function.
+
+================================================================================
+SPECIFICITY ANALYSIS
+================================================================================
+
+Are names specific enough to avoid ambiguity?
+
+c1_config → ✅ Specific enough (generic config)
+c1_pet_animations → ✅ Specific (pet animations, not generic)
+c1_pet_feedback_models → ✅ Specific (pet feedback models)
+c1_llm_client → ✅ Specific (LLM client infrastructure)
+c1_llm_providers → ✅ Specific (LLM providers)
+c1_llm_factory → ✅ Specific (LLM factory)
+
+c2_pet_engine → ✅ Specific (pet engine, not generic engine)
+c2_pet_feedback → ✅ Specific (pet feedback, not generic feedback)
+c2_pet_thoughts → ✅ Specific (pet thoughts, not generic thoughts)
+
+c3_pet_statusline → ✅ Specific (pet statusline)
+c3_pet_commands → ✅ Specific (pet commands)
+c3_pet_main → ✅ Specific (pet main)
+
+**Specificity Score: 100%** ✅
+All module names are specific and unambiguous.
+
+================================================================================
+FINAL RECOMMENDED NAMING
+================================================================================
+
+**c1 Layer (Foundation) - 7 modules:**
+1. c1_config (generic configuration)
+2. c1_pet_animations (pet animation data)
+3. c1_pet_feedback_models (pet feedback types)
+4. c1_llm_client (LLM client base classes)
+5. c1_llm_providers (LLM provider implementations)
+6. c1_llm_factory (LLM provider factory)
+7. (removed c1_feedback_database - moved to c2)
+
+**c2 Layer (Services) - 3 modules:**
+1. c2_pet_engine (pet state and orchestration)
+2. c2_pet_feedback (pet behavior monitoring - includes database)
+3. c2_pet_thoughts (pet thought generation)
+
+**c3 Layer (Applications) - 3 modules:**
+1. c3_pet_statusline (pet statusline rendering)
+2. c3_pet_commands (pet CLI commands)
+3. c3_pet_main (pet application entry point)
+
+**Total: 13 modules**
+
+================================================================================
+CHANGES FROM ORIGINAL PROPOSAL
+================================================================================
+
+**Renamed (6 modules):**
+- c1_animations → c1_pet_animations
+- c1_feedback_models → c1_pet_feedback_models
+- c2_feedback_service → c2_pet_feedback
+- c2_thought_system → c2_pet_thoughts
+- c3_statusline_display → c3_pet_statusline
+- c3_main → c3_pet_main
+
+**Kept Same (4 modules):**
+- c1_config
+- c1_llm_client
+- c1_llm_providers
+- c1_llm_factory
+- c2_pet_engine (already correct)
+- c3_pet_commands (already correct)
+
+**Moved (1 module):**
+- c1_feedback_database → merged into c2_pet_feedback
+
+**Removed (1 module):**
+- c2_llm_analysis → merged into c2_pet_feedback
+
+================================================================================
+BENEFITS OF CORRECTED NAMING
+================================================================================
+
+1. **Clear Domain Boundaries**: "pet_" prefix makes it obvious which modules
+   are part of the pet simulation domain
+
+2. **Consistent Prefixes**: All related modules share common prefix
+   (pet_feedback, pet_thought, pet_statusline, pet_command)
+
+3. **Unambiguous**: No generic names like "feedback" or "thoughts" without
+   domain context
+
+4. **Scalable**: If we add other domains (e.g., "game_" modules), naming
+   pattern extends naturally
+
+5. **Easier Navigation**: Modules group alphabetically by domain prefix
+
+6. **Self-Documenting**: Module name clearly indicates domain and function
+
+================================================================================
+SUMMARY
+================================================================================
+
+**Consistency**: 100% ✅ (all modules follow pattern)
+**Clarity**: 100% ✅ (all names describe function)
+**Specificity**: 100% ✅ (no ambiguous names)
+
+**Common Prefixes**:
+- pet_ (8 modules - pet domain)
+- llm_ (3 modules - LLM infrastructure)
+- No prefix (2 modules - generic utilities)
+
+**Recommended Total**: 13 modules
+- Reduced from original 16 by merging related packages
+- All modules have clear, consistent, specific names
+- All pet modules use "pet_" prefix
+
+================================================================================
+END OF NAMING REVIEW
+================================================================================

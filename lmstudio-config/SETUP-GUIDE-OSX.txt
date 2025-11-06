@@ -1,0 +1,422 @@
+================================================================================
+LM STUDIO SETUP GUIDE FOR macOS
+================================================================================
+Date: 2025-11-05
+Purpose: Complete setup guide for LM Studio on macOS with GPT-OSS and embedding models
+Target: macOS (Apple Silicon M1/M2/M3 or Intel)
+
+================================================================================
+PREREQUISITES
+================================================================================
+
+**System Requirements:**
+- macOS 11.0+ (Big Sur or later)
+- For gpt-oss-20b: 16 GB RAM minimum, 24 GB recommended
+- For gpt-oss-120b: 80 GB RAM minimum, 128 GB recommended
+- For embeddings: 4 GB RAM minimum per model
+- Disk space: 100 GB+ free (for models)
+- Internet connection (for initial download)
+
+**Recommended Hardware:**
+- Mac Studio (M1 Max/Ultra or M2 Max/Ultra): Best performance
+- MacBook Pro 16" (M1 Max/Pro, M2 Max/Pro): Good performance
+- MacBook Pro 14" (M1 Pro, M2 Pro): Acceptable for gpt-oss-20b
+- Mac Mini (M1/M2): Sufficient for embeddings and gpt-oss-20b
+
+**GPU Acceleration:**
+- Apple Silicon (M1/M2/M3): Automatic GPU acceleration via Metal
+- Intel Macs: CPU only (slower, not recommended for 120b)
+
+================================================================================
+STEP 1: INSTALL LM STUDIO
+================================================================================
+
+**Download LM Studio:**
+
+1. Visit: https://lmstudio.ai
+2. Click "Download for macOS"
+3. Download LMStudio-x.x.x.dmg (latest version)
+4. Open the DMG file
+5. Drag "LM Studio" to Applications folder
+6. Open Applications folder and launch "LM Studio"
+
+**First Launch:**
+
+1. macOS may show security warning
+2. System Settings → Privacy & Security → "Open Anyway"
+3. Accept LM Studio terms and conditions
+4. Allow LM Studio to access network (if prompted)
+
+================================================================================
+STEP 2: DOWNLOAD MODELS
+================================================================================
+
+**Download GPT-OSS Models:**
+
+1. Open LM Studio
+2. Click "Search" icon (magnifying glass) in left sidebar
+3. Search: "openai/gpt-oss-20b"
+4. Click the model card
+5. Select quantization: "Q4_K_M" (recommended)
+6. Click "Download" button
+7. Wait for download (~12 GB, 10-30 minutes depending on speed)
+8. Repeat for "openai/gpt-oss-120b" if needed (~70 GB, 1-3 hours)
+
+**Download Embedding Models:**
+
+1. In LM Studio search bar, search: "nomic-embed-text"
+2. Download: "text-embedding-nomic-embed-text-v1.5" (Q4_K_M)
+3. Search: "granite-embedding-125m"
+4. Download: "text-embedding-granite-embedding-125m-english"
+5. Search: "qwen3-embedding-8b"
+6. Download: "text-embedding-qwen3-embedding-8b" (Q4_K_M)
+
+**Verify Downloads:**
+
+1. Click "My Models" in left sidebar
+2. You should see:
+   - openai/gpt-oss-20b (Q4_K_M)
+   - openai/gpt-oss-120b (Q4_K_M) [if downloaded]
+   - text-embedding-nomic-embed-text-v1.5
+   - text-embedding-granite-embedding-125m-english
+   - text-embedding-qwen3-embedding-8b
+
+================================================================================
+STEP 3: CONFIGURE GPT-OSS-20B
+================================================================================
+
+**Load GPT-OSS-20B Model:**
+
+1. Go to "My Models" tab
+2. Find "openai/gpt-oss-20b (Q4_K_M)"
+3. Click the model card
+4. Click "Load Model" button
+5. Configure settings:
+
+   **GPU Layers:**
+   - M1/M2 Max (32 GPU cores): 40 layers (full GPU offload)
+   - M1/M2 Pro (16-19 GPU cores): 30-35 layers (partial offload)
+   - M1/M2 Base (7-8 GPU cores): 20-25 layers (partial offload)
+   - Intel Macs: 0 layers (CPU only)
+
+   **Context Length:**
+   - Development/testing: 8192 tokens
+   - Production: 16384 tokens
+   - Maximum: 32768 tokens (slower)
+
+   **CPU Threads:**
+   - Set to number of performance cores (usually 4-8)
+   - Don't exceed physical core count
+
+6. Click "Load" button
+7. Wait for model to load (~30 seconds)
+8. Status should show "Loaded" with green indicator
+
+**Test GPT-OSS-20B:**
+
+1. Click "Chat" tab in left sidebar
+2. Select "openai/gpt-oss-20b" from model dropdown
+3. Type test message: "What is 2+2?"
+4. Press Enter or click Send
+5. Model should respond quickly (within 1-2 seconds)
+6. Check generation speed in bottom right (should show 30-50 tokens/sec)
+
+================================================================================
+STEP 4: CONFIGURE GPT-OSS-120B (OPTIONAL)
+================================================================================
+
+**Load GPT-OSS-120B Model:**
+
+Only proceed if you have 80+ GB RAM!
+
+1. Go to "My Models" tab
+2. Find "openai/gpt-oss-120b (Q4_K_M)"
+3. Click the model card
+4. Click "Load Model" button
+5. Configure settings:
+
+   **GPU Layers:**
+   - Mac Studio Ultra (64 GPU cores): 60-70 layers
+   - M1/M2 Max (32 GPU cores): 40-50 layers
+   - Systems with <24 GB VRAM: 20-30 layers or 0 (CPU only)
+
+   **Context Length:**
+   - Start with 8192 tokens (faster)
+   - Increase to 16384-32768 as needed
+
+   **CPU Threads:**
+   - Set to 8-16 (depending on your CPU)
+
+6. Click "Load" button
+7. Wait for model to load (~2 minutes)
+8. Status should show "Loaded"
+
+**Test GPT-OSS-120B:**
+
+1. Click "Chat" tab
+2. Select "openai/gpt-oss-120b"
+3. Type test message: "Explain quantum computing"
+4. Response will be slower (8-15 tokens/sec)
+5. Quality should be noticeably better than 20b
+
+================================================================================
+STEP 5: START LOCAL SERVER
+================================================================================
+
+**Enable LM Studio Server:**
+
+1. Click "Local Server" tab in left sidebar
+2. Settings to configure:
+
+   **Server Port:** 1234 (default, don't change)
+   **Auto-start server:** Enable (checkbox)
+   **Enable CORS:** Enable (allows web access)
+   **API Key:** Leave empty (local access only)
+   **Model to serve:** Select "openai/gpt-oss-20b" or "openai/gpt-oss-120b"
+
+3. Click "Start Server" button (green)
+4. Server status should show "Running" with green indicator
+5. API endpoint will be: http://localhost:1234/v1
+
+**Verify Server is Running:**
+
+Open Terminal and run:
+
+```bash
+curl http://localhost:1234/v1/models
+```
+
+Expected output: JSON list of loaded models
+
+================================================================================
+STEP 6: LOAD EMBEDDING MODEL
+================================================================================
+
+**Load Embedding Model:**
+
+1. Go to "My Models" tab
+2. Find "text-embedding-qwen3-embedding-8b"
+3. Click the model card
+4. Click "Load Model" button
+5. Configure settings:
+
+   **GPU Layers:**
+   - M1/M2 Max: 40 layers (full offload)
+   - M1/M2 Pro: 30 layers
+   - M1/M2 Base: 20 layers
+
+6. Click "Load" button
+7. Wait for model to load (~20 seconds)
+
+**Test Embedding Model:**
+
+Open Terminal and run:
+
+```bash
+curl -X POST http://localhost:1234/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"model": "text-embedding-qwen3-embedding-8b", "input": "test"}' | \
+  jq '.data[0].embedding | length'
+```
+
+Expected output: 4096 (embedding dimension)
+
+================================================================================
+STEP 7: CONFIGURE ENVIRONMENT VARIABLES
+================================================================================
+
+**Create/Edit .env File:**
+
+For claude-code-tamagotchi project:
+
+```bash
+# Navigate to project directory
+cd /path/to/claude-code-tamagotchi
+
+# Create or edit .env file
+nano .env
+```
+
+**Add These Settings:**
+
+```bash
+# LLM Provider Selection
+PET_LLM_PROVIDER=lmstudio  # Use LM Studio (not Groq)
+
+# LM Studio Configuration
+LM_STUDIO_ENABLED=true
+LM_STUDIO_URL=http://localhost:1234/v1
+LM_STUDIO_MODEL=openai/gpt-oss-20b  # or openai/gpt-oss-120b
+LM_STUDIO_API_KEY=  # Leave empty
+
+# Timeouts (adjust for 120b if slower)
+PET_LM_STUDIO_TIMEOUT=30000  # 30 seconds
+PET_LM_STUDIO_MAX_RETRIES=1
+
+# Embedding Configuration (optional)
+LM_STUDIO_EMBEDDING_MODEL=text-embedding-qwen3-embedding-8b
+LM_STUDIO_EMBEDDING_URL=http://localhost:1234/v1
+
+# Pet Feedback System (if using)
+PET_FEEDBACK_ENABLED=true
+PET_FEEDBACK_MODE=full
+```
+
+Save file (Ctrl+O, Enter, Ctrl+X in nano)
+
+================================================================================
+STEP 8: TEST INTEGRATION
+================================================================================
+
+**Test Chat Completion:**
+
+```bash
+curl -X POST http://localhost:1234/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-oss-20b",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "temperature": 0.7
+  }' | jq '.choices[0].message.content'
+```
+
+**Test Embedding:**
+
+```bash
+curl -X POST http://localhost:1234/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "text-embedding-qwen3-embedding-8b",
+    "input": "test"
+  }' | jq '.data[0].embedding | length'
+```
+
+**Test with Claude Code Tamagotchi:**
+
+```bash
+# Run the pet application
+bun run src/index.ts
+
+# Or run tests
+./test-complete.sh
+```
+
+Expected: Pet displays with LM Studio backend working
+
+================================================================================
+STEP 9: OPTIMIZATION TIPS
+================================================================================
+
+**For Best Performance:**
+
+1. **Close Other Applications:**
+   - Free up RAM and VRAM for models
+   - Close Chrome/Safari (RAM-intensive)
+   - Close other LLM apps (Ollama, etc.)
+
+2. **GPU Offload:**
+   - Max out GPU layers if you have enough VRAM
+   - Monitor Activity Monitor → GPU tab during generation
+   - If GPU memory fills up, reduce layers by 10
+
+3. **Context Length:**
+   - Use minimum context needed (8192 for most tasks)
+   - Longer context = slower generation
+   - Only use 32768 if you need full conversation history
+
+4. **Temperature:**
+   - Lower = more deterministic (0.3-0.5)
+   - Higher = more creative (0.8-1.0)
+   - Default 0.7 is good balance
+
+5. **Batch Size:**
+   - For embeddings: batch 32-64 texts at once
+   - Faster than individual requests
+
+================================================================================
+STEP 10: TROUBLESHOOTING
+================================================================================
+
+**LM Studio Won't Start:**
+- Check macOS version (11.0+)
+- Try: System Settings → Privacy → Full Disk Access → Add LM Studio
+- Restart Mac
+
+**Model Download Fails:**
+- Check disk space (100 GB+ free)
+- Check internet connection
+- Try different mirror (Settings → Downloads)
+
+**Server Won't Start:**
+- Port 1234 might be in use
+- Close other LM Studio instances
+- Change port in Settings if needed
+
+**Out of Memory:**
+- Close other applications
+- Use smaller model (gpt-oss-20b instead of 120b)
+- Reduce context length
+- Reduce GPU layers
+
+**Slow Generation (<5 tok/s):**
+- Increase GPU layers
+- Reduce context length
+- Use faster model (20b instead of 120b)
+- Close other applications
+
+**Model Loads But Doesn't Respond:**
+- Check server is running (green indicator)
+- Test with curl (see Step 8)
+- Restart LM Studio
+- Reload model
+
+================================================================================
+STEP 11: RECOMMENDED WORKFLOW
+================================================================================
+
+**Daily Usage:**
+
+1. Open LM Studio
+2. Server auto-starts (if configured)
+3. Check "Local Server" tab shows green "Running"
+4. Use your applications (they connect to http://localhost:1234/v1)
+5. Close LM Studio when done (or leave running)
+
+**Switching Models:**
+
+1. Go to "Local Server" tab
+2. Click "Stop Server"
+3. Go to "My Models"
+4. Load different model
+5. Return to "Local Server"
+6. Click "Start Server"
+
+**Multiple Models:**
+
+LM Studio can only serve ONE model at a time via API.
+For parallel models, run multiple LM Studio instances on different ports.
+
+================================================================================
+ADDITIONAL RESOURCES
+================================================================================
+
+**LM Studio Documentation:**
+- Official docs: https://lmstudio.ai/docs
+- GitHub: https://github.com/lmstudio-ai
+
+**Model Sources:**
+- HuggingFace: https://huggingface.co/models
+- LM Studio model hub (built-in)
+
+**Community:**
+- LM Studio Discord: https://discord.gg/lmstudio
+- Reddit: r/LocalLLaMA
+
+**Related Tools:**
+- Ollama: Alternative local LLM runner
+- llama.cpp: Command-line LLM inference
+- GPT4All: Another local LLM GUI
+
+================================================================================
+END OF SETUP GUIDE
+================================================================================

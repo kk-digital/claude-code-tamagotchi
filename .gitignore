@@ -27,8 +27,11 @@ build/
 # Claude-specific
 .claude/
 
-# Data directory
-data/
+# Data directory (logs, but keep structure)
+data/logs/*.jsonl
+data/logs/*.log
+data/logs/*.db
+data/logs/*.db-*
 
 # Testing
 coverage/
