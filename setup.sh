@@ -169,7 +169,7 @@ echo "💡 Tip: You can customize your pet with environment variables!"
 echo "   See README.md for all configuration options"
 
 # Make the CLI executable
-chmod +x "$SCRIPT_DIR/src/commands/pet-cli.ts"
+chmod +x "$SCRIPT_DIR/src/c3_pet_commands/cli.ts" "$SCRIPT_DIR/bin/claude-code-tamagotchi.cjs"
 
 echo ""
 echo "✨ Setup complete! ✨"

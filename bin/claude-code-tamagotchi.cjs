@@ -36,7 +36,7 @@ if (!command || command === 'statusline') {
   });
 } else if (petCommands.includes(command)) {
   // Handle pet care commands
-  const cliPath = path.join(__dirname, '..', 'src', 'commands', 'cli.ts');
+  const cliPath = path.join(__dirname, '..', 'src', 'c3_pet_commands', 'cli.ts');
   
   // Check if bun is available
   const runner = process.env.BUN_INSTALL ? 'bun' : 'node';
