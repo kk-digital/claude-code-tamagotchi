@@ -12,7 +12,7 @@ const command = args[0];
 const commandArg = args[1];
 
 // Pet care commands that can be run from CLI
-const petCommands = ['feed', 'play', 'pet', 'clean', 'sleep', 'wake', 'stats', 'status', 'name', 'reset', 'violation-check'];
+const petCommands = ['feed', 'play', 'pet', 'clean', 'sleep', 'wake', 'stats', 'status', 'name', 'reset', 'violation-check', 'test-lmstudio', 'thoughts', 'settings'];
 
 // If no command or "statusline" command, run the statusline
 if (!command || command === 'statusline') {
@@ -77,16 +77,21 @@ GENERAL:
   claude-code-tamagotchi help         Show this help message
 
 PET CARE COMMANDS:
-  claude-code-tamagotchi feed [food]  Feed your pet (pizza, cookie, sushi, etc.)
-  claude-code-tamagotchi play [toy]   Play with your pet (ball, frisbee, laser, etc.)
-  claude-code-tamagotchi pet          Pet your companion (+happiness)
-  claude-code-tamagotchi clean        Give your pet a bath
-  claude-code-tamagotchi sleep        Put your pet to sleep
-  claude-code-tamagotchi wake         Wake up your pet
-  claude-code-tamagotchi stats        View detailed pet statistics
-  claude-code-tamagotchi status       Quick pet status check
-  claude-code-tamagotchi name [name]  Set your pet's name
-  claude-code-tamagotchi reset        Reset pet (careful - starts over!)
+  claude-code-tamagotchi feed [food]     Feed your pet (pizza, cookie, sushi, etc.)
+  claude-code-tamagotchi play [toy]      Play with your pet (ball, frisbee, laser, etc.)
+  claude-code-tamagotchi pet             Pet your companion (+happiness)
+  claude-code-tamagotchi clean           Give your pet a bath
+  claude-code-tamagotchi sleep           Put your pet to sleep
+  claude-code-tamagotchi wake            Wake up your pet
+  claude-code-tamagotchi stats           View detailed pet statistics
+  claude-code-tamagotchi status          Quick pet status check
+  claude-code-tamagotchi name [name]     Set your pet's name
+  claude-code-tamagotchi reset           Reset pet (careful - starts over!)
+
+AI & CONFIGURATION COMMANDS:
+  claude-code-tamagotchi settings        View configuration and feature status
+  claude-code-tamagotchi test-lmstudio   Test LM Studio connection and setup
+  claude-code-tamagotchi thoughts        View recent AI-generated observations
 
 EXAMPLES:
   # Feed your pet pizza
@@ -128,6 +133,7 @@ MORE INFO:
   console.error(`Unknown command: ${command}`);
   console.log('Run "claude-code-tamagotchi help" for usage information');
   console.log('');
-  console.log('Available commands: feed, play, pet, clean, sleep, wake, stats, status, name, reset');
+  console.log('Pet care: feed, play, pet, clean, sleep, wake, stats, status, name, reset');
+  console.log('AI & Config: settings, test-lmstudio, thoughts');
   process.exit(1);
 }

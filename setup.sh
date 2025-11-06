@@ -60,6 +60,9 @@ create_command "pet-name"
 # pet-dress removed - accessories feature deprecated
 create_command "pet-reset"
 create_command "pet-help"
+create_command "pet-test-lmstudio"
+create_command "pet-thoughts"
+create_command "pet-settings"
 
 # Create or update Claude Code settings for statusline
 echo ""

@@ -11,7 +11,7 @@ async function main() {
     console.log('Run "claude-code-tamagotchi help" for available commands');
     return;
   }
-  
+
   // Special handling for violation-check command
   if (command === 'violation-check') {
     // This command reads from stdin and needs special handling
@@ -19,7 +19,28 @@ async function main() {
     await violationCheck();
     return;
   }
-  
+
+  // Special handling for test-lmstudio command
+  if (command === 'test-lmstudio') {
+    const { testLMStudio } = await import('./test_lmstudio');
+    await testLMStudio();
+    return;
+  }
+
+  // Special handling for thoughts command
+  if (command === 'thoughts') {
+    const { showThoughts } = await import('./show_thoughts');
+    await showThoughts();
+    return;
+  }
+
+  // Special handling for settings command
+  if (command === 'settings') {
+    const { showSettings } = await import('./show_settings');
+    await showSettings();
+    return;
+  }
+
   // Convert CLI command to slash command format expected by CommandProcessor
   // Special handling for commands that need "pet-" prefix
   let slashCommand: string;
